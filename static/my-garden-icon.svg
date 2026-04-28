@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">My Garden App Icon</title>
+  <desc id="desc">A warm rounded square with a leafy plant sprouting from a terracotta pot.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#faf4e7" />
+      <stop offset="100%" stop-color="#e7dfcf" />
+    </linearGradient>
+    <linearGradient id="pot" x1="0%" x2="0%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#b87558" />
+      <stop offset="100%" stop-color="#8f563f" />
+    </linearGradient>
+    <linearGradient id="leaf" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#7caf78" />
+      <stop offset="100%" stop-color="#2f5f3f" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="240" fill="url(#bg)" />
+  <circle cx="258" cy="206" r="170" fill="#f3dcae" opacity=".55" />
+  <circle cx="836" cy="228" r="180" fill="#d4e7cc" opacity=".7" />
+  <path d="M360 580c34-102 115-180 152-206 34 26 119 106 152 206H360Z" fill="url(#pot)" />
+  <path d="M332 580h360c17 0 28 16 23 32l-42 150c-4 16-19 26-35 26H386c-16 0-31-10-35-26l-42-150c-5-16 6-32 23-32Z" fill="url(#pot)" />
+  <rect x="342" y="542" width="340" height="38" rx="19" fill="#c48767" />
+  <rect x="500" y="260" width="24" height="304" rx="12" fill="#2f5f3f" />
+  <path d="M514 356c-88-12-178-86-184-182 96 4 170 96 184 182Z" fill="url(#leaf)" />
+  <path d="M510 392c88-12 178-86 184-182-96 4-170 96-184 182Z" fill="url(#leaf)" />
+  <path d="M512 444c-114-6-218-74-248-166 116-2 220 72 248 166Z" fill="#4d7f57" />
+  <path d="M512 478c114-6 218-74 248-166-116-2-220 72-248 166Z" fill="#3e6d4b" />
+</svg>

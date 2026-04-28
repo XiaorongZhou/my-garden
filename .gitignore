@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+my_garden.db
+uploads/
+static/my-garden-icon.svg.png
+.DS_Store

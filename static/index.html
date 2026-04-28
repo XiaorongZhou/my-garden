@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f1e8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="My Garden" />
+    <title>My Garden</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <nav class="tab-bar" aria-label="My Garden navigation">
+        <button class="tab-button" type="button" data-route="add">Add Plant</button>
+        <button class="tab-button" type="button" data-route="garden">Your Garden</button>
+      </nav>
+
+      <section id="garden-view" class="app-view" hidden></section>
+
+      <section id="add-view" class="app-view">
+        <div class="panel form-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">New plant</p>
+              <h2>Describe your plant</h2>
+            </div>
+          </div>
+          <form id="add-plant-form" class="stack-form">
+            <div class="intake-composer">
+              <div id="intake-photo-preview"></div>
+              <input id="intake-photo" name="photo" type="file" accept="image/*" required hidden />
+              <div class="composer-body">
+                <div class="composer-toolbar">
+                  <button id="identify-plant" class="ghost-button composer-send" type="button">Identify plant</button>
+                </div>
+              </div>
+            </div>
+            <div id="suggestion-card" class="suggestion-card" hidden>
+              <p id="suggested-meta" class="eyebrow">Suggested plant</p>
+              <div class="suggested-name-row">
+                <h3 id="suggested-name">Unknown Houseplant</h3>
+                <button id="edit-plant-name" class="icon-edit-button" type="button" aria-label="Edit plant name">✎</button>
+              </div>
+              <p id="suggested-species" class="section-note">Unknown houseplant</p>
+              <input
+                id="plant-name"
+                name="plant_name"
+                class="inline-name-input"
+                type="text"
+                placeholder="Give this plant a name before saving"
+                autocomplete="off"
+                hidden
+              />
+              <p id="suggested-caption" class="support-copy">Add a photo, then tap Identify plant.</p>
+              <div id="suggested-diagnosis" class="suggestion-diagnosis" hidden>
+                <div class="suggestion-diagnosis-head">
+                  <p class="history-panel-label">Initial read</p>
+                  <span id="suggested-diagnosis-status" class="status-pill watch">Watch</span>
+                </div>
+                <h4 id="suggested-diagnosis-title">Photo saved. Add one quick observation next time</h4>
+                <p id="suggested-diagnosis-summary" class="support-copy"></p>
+              </div>
+            </div>
+            <label>
+              <span>Where it lives</span>
+              <input
+                id="plant-location"
+                name="location"
+                type="text"
+                list="room-options"
+                placeholder="Choose an existing room or type a new one"
+                autocomplete="off"
+              />
+            </label>
+            <datalist id="room-options"></datalist>
+            <label>
+              <span>Purchase date</span>
+              <input id="plant-purchase-date" name="purchase_date" type="date" />
+            </label>
+            <button id="save-plant" class="primary-button" type="submit">Save plant</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="detail-view" class="app-view" hidden></section>
+    </main>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

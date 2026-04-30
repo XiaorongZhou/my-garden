@@ -14,6 +14,40 @@
   </head>
   <body>
     <main class="app-shell">
+      <section id="auth-view" class="app-view" hidden>
+        <div class="panel form-panel auth-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Your garden</p>
+              <h2 id="auth-title">Open your garden</h2>
+            </div>
+          </div>
+          <p id="auth-copy" class="support-copy">
+            Use your name and email to keep your plants separate on any device.
+          </p>
+          <form id="auth-form" class="stack-form">
+            <label id="auth-name-field" hidden>
+              <span>Your name</span>
+              <input id="auth-name" name="name" type="text" autocomplete="name" placeholder="Alicia" required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+            </label>
+            <button id="auth-submit" class="primary-button" type="submit">Continue</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="session-bar" class="session-bar" hidden>
+        <div class="session-copy">
+          <p class="eyebrow">Current garden</p>
+          <h3 id="session-user-name">My Garden</h3>
+          <p id="session-user-email" class="section-note"></p>
+        </div>
+        <button id="switch-profile" class="ghost-button" type="button">Switch</button>
+      </section>
+
       <nav class="tab-bar" aria-label="My Garden navigation">
         <button class="tab-button" type="button" data-route="add">Add Plant</button>
         <button class="tab-button" type="button" data-route="garden">Your Garden</button>
@@ -45,6 +79,7 @@
                 <h3 id="suggested-name">Unknown Houseplant</h3>
                 <button id="edit-plant-name" class="icon-edit-button" type="button" aria-label="Edit plant name">✎</button>
               </div>
+              <p id="suggested-chinese-name" class="section-note" hidden></p>
               <p id="suggested-species" class="section-note">Unknown houseplant</p>
               <input
                 id="plant-name"
@@ -90,6 +125,6 @@
     </main>
 
     <div id="toast" class="toast" aria-live="polite"></div>
-    <script src="/static/app.js"></script>
+    <script type="module" src="/static/app.js"></script>
   </body>
 </html>

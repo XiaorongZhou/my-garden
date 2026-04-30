@@ -1,26 +1,84 @@
-const gardenViewEl = document.getElementById("garden-view");
-const addViewEl = document.getElementById("add-view");
-const detailViewEl = document.getElementById("detail-view");
-const addPlantForm = document.getElementById("add-plant-form");
-const toastEl = document.getElementById("toast");
-const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
-const intakePhotoInput = document.getElementById("intake-photo");
-const intakeLocationInput = document.getElementById("plant-location");
-const intakePurchaseDateInput = document.getElementById("plant-purchase-date");
-const roomOptionsEl = document.getElementById("room-options");
-const intakePreviewEl = document.getElementById("intake-photo-preview");
-const suggestionCardEl = document.getElementById("suggestion-card");
-const suggestedNameEl = document.getElementById("suggested-name");
-const suggestedSpeciesEl = document.getElementById("suggested-species");
-const suggestedMetaEl = document.getElementById("suggested-meta");
-const suggestedCaptionEl = document.getElementById("suggested-caption");
-const suggestedDiagnosisEl = document.getElementById("suggested-diagnosis");
-const suggestedDiagnosisStatusEl = document.getElementById("suggested-diagnosis-status");
-const suggestedDiagnosisTitleEl = document.getElementById("suggested-diagnosis-title");
-const suggestedDiagnosisSummaryEl = document.getElementById("suggested-diagnosis-summary");
-const plantNameInput = document.getElementById("plant-name");
-const editPlantNameButton = document.getElementById("edit-plant-name");
-const identifyPlantButton = document.getElementById("identify-plant");
+import {
+  escapeHtml,
+  isUnknownSuggestionName,
+  normalizeDiagnosis,
+  normalizeSuggestion,
+  normalizeTip,
+  todayInputValue,
+} from "/static/js/helpers.js";
+import {
+  createSessionRequest,
+  createCheckinRequest,
+  createPlantRequest,
+  deleteCheckinRequest,
+  deletePlantRequest,
+  fetchPlantDetail,
+  fetchPlants,
+  fetchSession,
+  patchPlant,
+  requestPlantIdentityPreview,
+  setApiUserId,
+} from "/static/js/api.js";
+import {
+  createInitialState,
+  resetSessionState,
+  resetDetailEditorState,
+  resetIntakeSuggestion,
+  syncDetailEditorState,
+  syncIntakePlantNameFromSuggestion,
+} from "/static/js/state.js";
+import { routeFromHash, setRoute } from "/static/js/router.js";
+import { renderAddView } from "/static/js/views/add-view.js";
+import { renderGarden } from "/static/js/views/garden-view.js";
+import {
+  renderCheckinView,
+  renderDetail,
+  updateDetailPreviewSlot,
+} from "/static/js/views/detail-view.js";
+
+const elements = {
+  authViewEl: document.getElementById("auth-view"),
+  authForm: document.getElementById("auth-form"),
+  authTitleEl: document.getElementById("auth-title"),
+  authCopyEl: document.getElementById("auth-copy"),
+  authNameFieldEl: document.getElementById("auth-name-field"),
+  authNameInput: document.getElementById("auth-name"),
+  authEmailInput: document.getElementById("auth-email"),
+  authSubmitButton: document.getElementById("auth-submit"),
+  sessionBarEl: document.getElementById("session-bar"),
+  sessionUserNameEl: document.getElementById("session-user-name"),
+  sessionUserEmailEl: document.getElementById("session-user-email"),
+  switchProfileButton: document.getElementById("switch-profile"),
+  gardenViewEl: document.getElementById("garden-view"),
+  addViewEl: document.getElementById("add-view"),
+  detailViewEl: document.getElementById("detail-view"),
+  addPlantForm: document.getElementById("add-plant-form"),
+  toastEl: document.getElementById("toast"),
+  tabBarEl: document.querySelector(".tab-bar"),
+  tabButtons: Array.from(document.querySelectorAll(".tab-button")),
+  intakePhotoInput: document.getElementById("intake-photo"),
+  intakeLocationInput: document.getElementById("plant-location"),
+  intakePurchaseDateInput: document.getElementById("plant-purchase-date"),
+  roomOptionsEl: document.getElementById("room-options"),
+  intakePreviewEl: document.getElementById("intake-photo-preview"),
+  suggestionCardEl: document.getElementById("suggestion-card"),
+  suggestedNameEl: document.getElementById("suggested-name"),
+  suggestedChineseNameEl: document.getElementById("suggested-chinese-name"),
+  suggestedSpeciesEl: document.getElementById("suggested-species"),
+  suggestedMetaEl: document.getElementById("suggested-meta"),
+  suggestedCaptionEl: document.getElementById("suggested-caption"),
+  suggestedDiagnosisEl: document.getElementById("suggested-diagnosis"),
+  suggestedDiagnosisStatusEl: document.getElementById("suggested-diagnosis-status"),
+  suggestedDiagnosisTitleEl: document.getElementById("suggested-diagnosis-title"),
+  suggestedDiagnosisSummaryEl: document.getElementById("suggested-diagnosis-summary"),
+  plantNameInput: document.getElementById("plant-name"),
+  editPlantNameButton: document.getElementById("edit-plant-name"),
+  identifyPlantButton: document.getElementById("identify-plant"),
+};
+
+const state = createInitialState();
+const SESSION_STORAGE_KEY = "my-garden-user-id";
+const REMEMBERED_USER_STORAGE_KEY = "my-garden-remembered-user";
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) {
@@ -33,85 +91,87 @@ async function registerServiceWorker() {
   }
 }
 
-function defaultSuggestion() {
-  return {
-    name: "Unknown Houseplant",
-    species: "Unknown houseplant",
-    confidence: "low",
-    source: "idle",
-    caption: "Add a photo, then tap Identify plant.",
-  };
-}
-
-const state = {
-  plants: [],
-  selectedPlant: null,
-  route: { name: "add" },
-  intakePreviewUrl: null,
-  detailPreviewUrl: null,
-  intakeSuggestion: defaultSuggestion(),
-  intakeDiagnosis: null,
-  intakeUploadToken: "",
-  intakeSuggestionLoading: false,
-  intakeSuggestionRequestId: 0,
-  intakeSuggestionSignature: "",
-  intakePlantName: "",
-  intakePlantNameTouched: false,
-  intakePlantNameEditing: false,
-  toastTimer: null,
-};
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 function showToast(message) {
-  toastEl.textContent = message;
-  toastEl.classList.add("show");
+  elements.toastEl.textContent = message;
+  elements.toastEl.classList.add("show");
   if (state.toastTimer) {
     clearTimeout(state.toastTimer);
   }
   state.toastTimer = setTimeout(() => {
-    toastEl.classList.remove("show");
+    elements.toastEl.classList.remove("show");
   }, 1800);
 }
 
-function initialsFor(name) {
-  return String(name || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() || "")
-    .join("");
+function storeSessionUserId(userId) {
+  if (userId) {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, userId);
+  } else {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
 }
 
-function formatDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+function storeRememberedUser(user) {
+  if (user?.id && user?.email) {
+    window.localStorage.setItem(REMEMBERED_USER_STORAGE_KEY, JSON.stringify({
+      id: user.id,
+      name: user.name || "",
+      email: user.email || "",
+    }));
+    state.rememberedUser = {
+      id: String(user.id),
+      name: String(user.name || ""),
+      email: String(user.email || ""),
+    };
+    return;
+  }
+  window.localStorage.removeItem(REMEMBERED_USER_STORAGE_KEY);
+  state.rememberedUser = null;
 }
 
-function todayInputValue() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function readStoredSessionUserId() {
+  return String(window.localStorage.getItem(SESSION_STORAGE_KEY) || "").trim();
+}
+
+function readRememberedUser() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REMEMBERED_USER_STORAGE_KEY) || "null");
+    if (!parsed?.id || !parsed?.email) {
+      return null;
+    }
+    return {
+      id: String(parsed.id),
+      name: String(parsed.name || ""),
+      email: String(parsed.email || ""),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function setCurrentUser(user) {
+  state.currentUser = user || null;
+  const userId = String(user?.id || "").trim();
+  setApiUserId(userId);
+  storeSessionUserId(userId);
+  if (user) {
+    storeRememberedUser(user);
+  }
+}
+
+function clearCurrentUser() {
+  resetSessionState(state);
+  setCurrentUser(null);
+  state.plants = [];
+  state.selectedPlant = null;
+  clearIntakePreview();
+  clearDetailPreview();
+  resetIntakeSuggestion(state);
+  resetDetailEditorState(state);
 }
 
 function resetPurchaseDateInput() {
-  if (intakePurchaseDateInput) {
-    intakePurchaseDateInput.value = todayInputValue();
+  if (elements.intakePurchaseDateInput) {
+    elements.intakePurchaseDateInput.value = todayInputValue();
   }
 }
 
@@ -125,226 +185,34 @@ function knownRooms() {
   ).sort((left, right) => left.localeCompare(right));
 }
 
-function statusLabel(status) {
-  if (status === "thriving") return "Thriving";
-  if (status === "needs_care") return "Needs care";
-  return "Watch";
-}
-
-function fallbackSummary(checkin) {
-  if (!checkin) return "";
-  const summary = String(checkin.diagnosis_summary || "").trim();
-  if (summary) return summary;
-  if (!String(checkin.note || "").trim()) {
-    return "No symptom note yet. Add one quick observation next time so the read can be specific.";
-  }
-  return "";
-}
-
-function historyDisclosureMarkup(checkin, plant) {
-  const diagnosis = fallbackSummary(checkin);
-  const ownerNote = String(checkin.note || "").trim();
-  return `
-    <details class="history-card history-disclosure">
-      <summary class="history-summary">
-        <div class="history-photo">
-          ${photoMarkup(checkin.photo_url, `${plant.name} check-in`, initialsFor(plant.name))}
-        </div>
-        <div class="history-summary-main">
-          <div class="history-title">
-            <h3>${escapeHtml(checkin.diagnosis_title)}</h3>
-            <span class="status-pill ${escapeHtml(checkin.health_status)}">${escapeHtml(statusLabel(checkin.health_status))}</span>
-          </div>
-          <p class="history-meta">${escapeHtml(formatDate(checkin.created_at))}</p>
-        </div>
-        <span class="history-chevron" aria-hidden="true">⌄</span>
-      </summary>
-      <div class="history-panel">
-        ${
-          diagnosis
-            ? `
-              <div class="history-panel-block">
-                <p class="history-panel-label">Saved diagnosis</p>
-                <p class="history-copy">${escapeHtml(diagnosis)}</p>
-              </div>
-            `
-            : ""
-        }
-        ${
-          ownerNote
-            ? `
-              <div class="history-panel-block">
-                <p class="history-panel-label">What you noted</p>
-                <p class="history-copy">${escapeHtml(ownerNote)}</p>
-              </div>
-            `
-            : ""
-        }
-      </div>
-    </details>
-  `;
-}
-
-function photoMarkup(url, alt, fallback) {
-  if (url) {
-    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" />`;
-  }
-  return `<div class="empty-photo">${escapeHtml(fallback)}</div>`;
-}
-
-function placeholderPhotoMarkup(buttonId) {
-  return `
-    <div class="intake-placeholder intake-placeholder-action">
-      <p class="eyebrow">Photo preview</p>
-      <button id="${escapeHtml(buttonId)}" class="ghost-button intake-placeholder-button icon-photo-button" type="button" aria-label="Add photo">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M8 6.5 9.4 4h5.2L16 6.5h2.2A2.8 2.8 0 0 1 21 9.3v7.4a2.8 2.8 0 0 1-2.8 2.8H5.8A2.8 2.8 0 0 1 3 16.7V9.3a2.8 2.8 0 0 1 2.8-2.8Zm4 3.1a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 1.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"></path>
-        </svg>
-      </button>
-    </div>
-  `;
-}
-
-function resetIntakeSuggestion() {
-  state.intakeSuggestion = defaultSuggestion();
-  state.intakeDiagnosis = null;
-  state.intakeUploadToken = "";
-  state.intakeSuggestionLoading = false;
-  state.intakeSuggestionSignature = "";
-  state.intakePlantName = "";
-  state.intakePlantNameTouched = false;
-  state.intakePlantNameEditing = false;
-}
-
-function isUnknownSuggestionName(value) {
-  return String(value || "").trim().toLowerCase() === "unknown houseplant";
-}
-
-function hasUsefulSpeciesLabel(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return Boolean(normalized) && ![
-    "unknown houseplant",
-    "photo attached",
-    "identifying your plant",
-  ].includes(normalized);
-}
-
-function syncIntakePlantNameFromSuggestion(suggestion) {
-  if (state.intakePlantNameTouched) {
-    return;
-  }
-  state.intakePlantName = isUnknownSuggestionName(suggestion?.name) ? "" : String(suggestion?.name || "").trim();
-}
-
 function setPlantNameEditing(isEditing) {
   state.intakePlantNameEditing = isEditing;
   const displayName = state.intakePlantNameTouched && state.intakePlantName.trim()
     ? state.intakePlantName.trim()
     : state.intakeSuggestion.name;
-  if (suggestedNameEl) {
-    suggestedNameEl.textContent = displayName;
-    suggestedNameEl.hidden = isEditing;
+  if (elements.suggestedNameEl) {
+    elements.suggestedNameEl.textContent = displayName;
+    elements.suggestedNameEl.hidden = isEditing;
   }
-  if (editPlantNameButton) {
-    editPlantNameButton.hidden = isEditing;
+  if (elements.editPlantNameButton) {
+    elements.editPlantNameButton.hidden = isEditing;
   }
-  if (plantNameInput) {
-    plantNameInput.hidden = !isEditing;
+  if (elements.plantNameInput) {
+    elements.plantNameInput.hidden = !isEditing;
   }
-  if (isEditing && plantNameInput) {
-    plantNameInput.value = state.intakePlantName;
+  if (isEditing && elements.plantNameInput) {
+    elements.plantNameInput.value = state.intakePlantName;
     queueMicrotask(() => {
-      plantNameInput.focus();
-      plantNameInput.select();
+      elements.plantNameInput.focus();
+      elements.plantNameInput.select();
     });
   }
 }
 
 function intakeSignature() {
-  const file = intakePhotoInput?.files?.[0];
+  const file = elements.intakePhotoInput?.files?.[0];
   if (!file) return "";
   return [file.name || "", String(file.size || 0), String(file.lastModified || 0)].join("|");
-}
-
-function suggestionMetaLabel(suggestion) {
-  if (state.intakeSuggestionLoading) {
-    return "Analyzing photo";
-  }
-  if (suggestion.source === "openai") {
-    const confidence = suggestion.confidence ? ` · ${suggestion.confidence} confidence` : "";
-    return `Photo ID${confidence}`;
-  }
-  if (suggestion.source === "heuristic") {
-    return "Backup guess";
-  }
-  if (suggestion.source === "ready") {
-    return "Ready to identify";
-  }
-  return "Suggested plant";
-}
-
-function normalizeSuggestion(payload) {
-  const base = defaultSuggestion();
-  return {
-    ...base,
-    ...payload,
-    name: payload?.name || base.name,
-    species: payload?.species || base.species,
-    caption: payload?.caption || base.caption,
-    confidence: payload?.confidence || base.confidence,
-    source: payload?.source || base.source,
-  };
-}
-
-function normalizeDiagnosis(payload) {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-  const healthStatus = ["thriving", "watch", "needs_care"].includes(String(payload.health_status || "").trim())
-    ? String(payload.health_status).trim()
-    : "watch";
-  const diagnosisTitle = String(payload.diagnosis_title || "").trim();
-  const diagnosisSummary = String(payload.diagnosis_summary || "").trim();
-  const careSteps = Array.isArray(payload.care_steps)
-    ? payload.care_steps.map((step) => String(step || "").trim()).filter(Boolean).slice(0, 3)
-    : [];
-  if (!diagnosisTitle && !diagnosisSummary && !careSteps.length) {
-    return null;
-  }
-  return {
-    health_status: healthStatus,
-    diagnosis_title: diagnosisTitle || "Nothing alarming stands out yet",
-    diagnosis_summary: diagnosisSummary,
-    care_steps: careSteps,
-  };
-}
-
-function routeFromHash() {
-  const raw = window.location.hash.replace(/^#\/?/, "").trim();
-  if (!raw || raw === "overview" || raw === "add") {
-    return { name: "add" };
-  }
-  if (raw === "garden") {
-    return { name: "garden" };
-  }
-  const checkinMatch = raw.match(/^plant\/(.+)\/checkin$/);
-  if (checkinMatch) {
-    return { name: "checkin", plantId: decodeURIComponent(checkinMatch[1]) };
-  }
-  if (raw.startsWith("plant/")) {
-    const plantId = decodeURIComponent(raw.slice("plant/".length));
-    return { name: "detail", plantId };
-  }
-  return { name: "add" };
-}
-
-function setRoute(nextHash) {
-  const normalized = nextHash.startsWith("#") ? nextHash : `#${nextHash}`;
-  if (window.location.hash === normalized) {
-    syncRoute();
-    return;
-  }
-  window.location.hash = normalized;
 }
 
 function revokeUrl(url) {
@@ -364,8 +232,15 @@ function clearDetailPreview() {
 }
 
 function setActiveTab() {
-  const activeRoute = state.route.name === "detail" || state.route.name === "checkin" ? "garden" : state.route.name;
-  tabButtons.forEach((button) => {
+  if (!state.currentUser) {
+    elements.tabBarEl.hidden = true;
+    return;
+  }
+  elements.tabBarEl.hidden = false;
+  const activeRoute = state.route.name === "detail" || state.route.name === "checkin"
+    ? "garden"
+    : state.route.name;
+  elements.tabButtons.forEach((button) => {
     const isActive = button.getAttribute("data-route") === activeRoute;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-current", isActive ? "page" : "false");
@@ -373,367 +248,191 @@ function setActiveTab() {
 }
 
 function showView(name) {
-  gardenViewEl.hidden = name !== "garden";
-  addViewEl.hidden = name !== "add";
-  detailViewEl.hidden = name !== "detail";
+  elements.authViewEl.hidden = name !== "auth";
+  elements.gardenViewEl.hidden = name !== "garden";
+  elements.addViewEl.hidden = name !== "add";
+  elements.detailViewEl.hidden = name !== "detail";
 }
 
-function renderAddView() {
-  const file = intakePhotoInput?.files?.[0] || null;
-  const currentSignature = intakeSignature();
-  const suggestion = state.intakeSuggestionLoading
-    ? {
-        name: "Looking closely...",
-        species: "Identifying your plant",
-        caption: "We’re identifying the plant and drafting a first read before you save.",
-        confidence: "",
-        source: "loading",
-      }
-    : file && state.intakeSuggestionSignature !== currentSignature
-      ? {
-          name: "Ready when you are",
-          species: "Photo attached",
-          caption: "Tap Identify plant to preview the plant name and first read before saving.",
-          confidence: "",
-          source: "ready",
-        }
-      : state.intakeSuggestion;
-  const diagnosis = state.intakeSuggestionLoading || state.intakeSuggestionSignature !== currentSignature
-    ? null
-    : state.intakeDiagnosis;
-
-  const displayName = state.intakePlantNameTouched && state.intakePlantName.trim()
-    ? state.intakePlantName.trim()
-    : suggestion.name;
-
-  suggestedNameEl.textContent = displayName;
-  suggestedSpeciesEl.hidden = !hasUsefulSpeciesLabel(suggestion.species);
-  suggestedSpeciesEl.textContent = hasUsefulSpeciesLabel(suggestion.species) ? suggestion.species : "";
-  suggestedMetaEl.textContent = suggestionMetaLabel(suggestion);
-  suggestedCaptionEl.textContent = suggestion.caption;
-  if (suggestedDiagnosisEl) {
-    suggestedDiagnosisEl.hidden = !diagnosis;
-  }
-  if (diagnosis) {
-    suggestedDiagnosisStatusEl.className = `status-pill ${escapeHtml(diagnosis.health_status)}`;
-    suggestedDiagnosisStatusEl.textContent = statusLabel(diagnosis.health_status);
-    suggestedDiagnosisTitleEl.textContent = diagnosis.diagnosis_title;
-    suggestedDiagnosisSummaryEl.textContent = diagnosis.diagnosis_summary || "Initial read saved and ready to use when you save this plant.";
-  }
-  syncIntakePlantNameFromSuggestion(suggestion);
-  if (plantNameInput) {
-    plantNameInput.value = state.intakePlantName;
-    plantNameInput.placeholder = isUnknownSuggestionName(suggestion.name)
-      ? "Give this plant a name before saving"
-      : "Edit the plant name before saving";
-  }
-  setPlantNameEditing(state.intakePlantNameEditing);
-
-  intakePreviewEl.innerHTML = state.intakePreviewUrl
-    ? `<div class="preview-image"><img src="${escapeHtml(state.intakePreviewUrl)}" alt="Preview of your new plant photo" /></div>`
-    : placeholderPhotoMarkup("empty-add-photo");
-
-  if (identifyPlantButton) {
-    identifyPlantButton.disabled = !file || state.intakeSuggestionLoading;
-    identifyPlantButton.textContent = state.intakeSuggestionLoading
-      ? "Identifying..."
-      : file && state.intakeSuggestionSignature === currentSignature
-        ? "Re-identify plant"
-        : "Identify plant";
-  }
-
-  if (suggestionCardEl) {
-    suggestionCardEl.hidden = !file;
-  }
-
-  if (roomOptionsEl) {
-    roomOptionsEl.innerHTML = knownRooms()
-      .map((room) => `<option value="${escapeHtml(room)}"></option>`)
-      .join("");
-  }
-
-  document.getElementById("empty-add-photo")?.addEventListener("click", () => {
-    intakePhotoInput?.click();
-  });
-}
-
-function renderGarden() {
-  if (!state.plants.length) {
-    gardenViewEl.innerHTML = `
-      <div class="panel empty-card">
-        <p class="eyebrow">No plants yet</p>
-        <h2>Start with the camera</h2>
-        <p class="empty-copy">Use the Add Plant tab to snap a photo, save the plant, and create its first diagnosis.</p>
-      </div>
-    `;
+function renderSessionBar() {
+  const activeUser = state.currentUser || state.rememberedUser;
+  const isResumeState = !state.currentUser && !!state.rememberedUser;
+  elements.sessionBarEl.hidden = !activeUser;
+  if (!activeUser) {
     return;
   }
-
-  const rows = state.plants
-    .map((plant) => {
-      const status = plant.latest_status || "watch";
-      return `
-        <button class="garden-row" type="button" data-open-plant="${escapeHtml(plant.id)}">
-          <div class="garden-row-thumb">
-            ${photoMarkup(plant.photo_url, `${plant.name} thumbnail`, initialsFor(plant.name))}
-          </div>
-          <div class="garden-row-main">
-            <div class="garden-row-head">
-              <h3>${escapeHtml(plant.name)}</h3>
-              <span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</span>
-            </div>
-            <p class="garden-row-meta">${escapeHtml(plant.species)} · ${escapeHtml(plant.location || "Home")}</p>
-            <p class="garden-row-summary">${escapeHtml(plant.latest_summary || plant.latest_title || "No diagnosis yet. Start with a photo check-in.")}</p>
-          </div>
-          <span class="garden-row-chevron" aria-hidden="true">›</span>
-        </button>
-      `;
-    })
-    .join("");
-
-  gardenViewEl.innerHTML = `
-    <div class="panel">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Your garden</p>
-          <h2>Plant list</h2>
-        </div>
-        <p class="section-note">${escapeHtml(String(state.plants.length))} plants</p>
-      </div>
-      <div class="garden-list">${rows}</div>
-    </div>
-  `;
-
-  bindDynamicRouteLinks(gardenViewEl);
+  const eyebrow = elements.sessionBarEl.querySelector(".eyebrow");
+  if (eyebrow) {
+    eyebrow.textContent = isResumeState ? "Current garden" : "Current garden";
+  }
+  elements.sessionUserNameEl.textContent = `${activeUser.name}'s garden`;
+  elements.sessionUserEmailEl.textContent = activeUser.email || "";
+  elements.switchProfileButton.textContent = isResumeState ? "Continue" : "Switch";
+  elements.switchProfileButton.dataset.mode = isResumeState ? "resume" : "switch";
 }
 
-function renderDetail() {
-  const plant = state.selectedPlant;
-  if (!plant) {
-    detailViewEl.innerHTML = `
-      <div class="panel empty-card">
-        <p class="eyebrow">Plant not found</p>
-        <h2>Let’s head back to your garden</h2>
-        <a class="ghost-button link-button" href="#/garden">Back to list</a>
-      </div>
-    `;
-    return;
+function renderAuthView() {
+  const title = state.authNeedsName
+    ? (state.sessionClaimable ? "Claim your garden" : "Create your garden")
+    : "Open your garden";
+  const copy = state.authNeedsName
+    ? (state.sessionClaimable
+      ? "This email is new here, so add your name once to claim the shared garden."
+      : "This email is new here, so add your name once to create a new garden.")
+    : "Start with your email. If this is a new garden, we’ll ask for your name next.";
+  const remembered = state.rememberedUser;
+
+  elements.authTitleEl.textContent = title;
+  elements.authCopyEl.textContent = copy;
+  elements.authNameFieldEl.hidden = !state.authNeedsName;
+  elements.authNameInput.required = state.authNeedsName;
+  if (!state.authNeedsName) {
+    elements.authNameInput.value = "";
   }
-
-  const latest = plant.latest_checkin;
-  const historyMarkup = plant.checkins.length
-    ? plant.checkins
-        .map((checkin) => historyDisclosureMarkup(checkin, plant))
-        .join("")
-    : `
-      <div class="empty-card">
-        <h3>No check-ins yet</h3>
-        <p class="empty-copy">Open a check-in when you want to save the first photo and diagnosis for this plant.</p>
-      </div>
-    `;
-
-  detailViewEl.innerHTML = `
-    <div class="detail-stack">
-      <div class="detail-topbar">
-        <a class="ghost-button link-button back-button icon-back-button" href="#/garden" aria-label="Back to your garden">←</a>
-      </div>
-
-      <div class="detail-shell">
-        <section class="plant-hero">
-          <div class="plant-hero-image">
-            ${photoMarkup(plant.photo_url, `${plant.name} hero photo`, initialsFor(plant.name))}
-          </div>
-          <div class="plant-hero-copy">
-            <p class="eyebrow">Plant detail</p>
-            <div class="inline-status">
-              <h2>${escapeHtml(plant.name)}</h2>
-              <span class="status-pill ${escapeHtml((latest && latest.health_status) || "watch")}">${escapeHtml(statusLabel((latest && latest.health_status) || "watch"))}</span>
-            </div>
-            <p class="detail-meta">${escapeHtml(plant.species)} · ${escapeHtml(plant.location || "Home")}</p>
-            <div class="context-block">
-              <p class="support-copy">${escapeHtml(plant.notes || "No extra notes yet. Add a little context if this plant has a strong personality.")}</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="info-row">
-          <article class="info-card">
-            <div class="info-card-title">
-              <h3>Latest read</h3>
-              <p class="status-copy">${latest ? escapeHtml(formatDate(latest.created_at)) : "No diagnosis yet"}</p>
-            </div>
-            ${
-              latest
-                ? `
-                  <h3>${escapeHtml(latest.diagnosis_title)}</h3>
-                  ${fallbackSummary(latest) ? `<p class="status-copy">${escapeHtml(fallbackSummary(latest))}</p>` : ""}
-                `
-                : `
-                  <p class="status-copy">Once you upload a photo and add a note, your next step will show up here.</p>
-                `
-            }
-          </article>
-        </section>
-
-        <section class="checkin-card">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">New check-in</p>
-              <h2>Open a fresh diagnosis</h2>
-            </div>
-          </div>
-          <p class="support-copy">Keep this page focused on the plant. Start the next check-in on its own screen when you are ready.</p>
-          <a class="primary-button link-button inline-cta" href="#/plant/${encodeURIComponent(plant.id)}/checkin">New check-in</a>
-        </section>
-
-        <section>
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Plant progression</p>
-              <h2>Photo history</h2>
-            </div>
-          </div>
-          <div class="history-list">${historyMarkup}</div>
-        </section>
-
-        <section class="danger-zone">
-          <button class="ghost-button danger-button" id="delete-plant" type="button">Delete plant</button>
-        </section>
-      </div>
-    </div>
-  `;
-
-  document.getElementById("delete-plant")?.addEventListener("click", handleDeletePlant);
+  elements.authSubmitButton.disabled = state.authSubmitting;
+  elements.authSubmitButton.textContent = state.authSubmitting ? "Opening..." : "Continue";
+  if (remembered && !elements.authEmailInput.value) {
+    elements.authEmailInput.value = remembered.email;
+  }
+  renderSessionBar();
+  elements.tabBarEl.hidden = true;
+  showView("auth");
 }
 
-function renderCheckinView() {
-  const plant = state.selectedPlant;
-  if (!plant) {
-    detailViewEl.innerHTML = `
-      <div class="panel empty-card">
-        <p class="eyebrow">Plant not found</p>
-        <h2>Let’s head back to your garden</h2>
-        <a class="ghost-button link-button" href="#/garden">Back to list</a>
-      </div>
-    `;
-    return;
-  }
-
-  const previewMarkup = state.detailPreviewUrl
-    ? `<div class="preview-image"><img src="${escapeHtml(state.detailPreviewUrl)}" alt="Preview of your new plant check-in photo" /></div>`
-    : placeholderPhotoMarkup("empty-checkin-photo");
-
-  detailViewEl.innerHTML = `
-    <div class="detail-stack">
-      <div class="detail-topbar">
-        <a class="ghost-button link-button back-button icon-back-button" href="#/plant/${encodeURIComponent(plant.id)}" aria-label="Back to plant detail">←</a>
-      </div>
-
-      <div class="detail-shell">
-        <section class="checkin-card">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">New check-in</p>
-              <h2>Diagnose ${escapeHtml(plant.name)}</h2>
-            </div>
-          </div>
-          <p class="detail-meta">${escapeHtml(plant.species)} · ${escapeHtml(plant.location || "Home")}</p>
-          <form id="checkin-form" class="checkin-form stack-form">
-            <div class="intake-composer checkin-composer">
-              <div id="photo-preview-slot">${previewMarkup}</div>
-              <input id="checkin-photo" name="photo" type="file" accept="image/*" hidden />
-              <div class="composer-body">
-                <textarea
-                  id="checkin-note"
-                  name="note"
-                  rows="4"
-                  placeholder="Add a photo, then tell My Garden what changed today: drooping leaves, dry soil, yellow spots, crispy edges, or anything else you’re noticing."
-                ></textarea>
-              </div>
-            </div>
-            <button class="primary-button" type="submit">Save diagnosis</button>
-          </form>
-        </section>
-      </div>
-    </div>
-  `;
-
-  const photoInput = document.getElementById("checkin-photo");
-  const checkinForm = document.getElementById("checkin-form");
-  if (photoInput) {
-    photoInput.addEventListener("change", handleDetailPhotoPreview);
-  }
-  document.getElementById("empty-checkin-photo")?.addEventListener("click", () => {
-    photoInput?.click();
-  });
-  if (checkinForm) {
-    checkinForm.addEventListener("submit", handleCheckinSubmit);
-  }
+function openAddPhotoPicker() {
+  elements.intakePhotoInput?.click();
 }
 
-function updateDetailPreviewSlot() {
-  const slot = document.getElementById("photo-preview-slot");
-  if (!slot) return;
-  slot.innerHTML = state.detailPreviewUrl
-    ? `<div class="preview-image"><img src="${escapeHtml(state.detailPreviewUrl)}" alt="Preview of your new plant check-in photo" /></div>`
-    : placeholderPhotoMarkup("empty-checkin-photo");
-  document.getElementById("empty-checkin-photo")?.addEventListener("click", () => {
-    document.getElementById("checkin-photo")?.click();
-  });
+function openCheckinPhotoPicker() {
+  document.getElementById("checkin-photo")?.click();
 }
 
-function handleIntakePhotoChange(event) {
-  clearIntakePreview();
-  const file = event.target.files?.[0];
-  if (file) {
-    state.intakePreviewUrl = URL.createObjectURL(file);
-  }
-  resetIntakeSuggestion();
-  renderAddView();
+function handleStartEditDetailName() {
+  state.detailDraftName = String(state.selectedPlant?.name || "");
+  state.detailNameEditing = true;
+  renderCurrentView();
 }
 
-function handleDetailPhotoPreview(event) {
+function handleCancelEditDetailName() {
+  state.detailDraftName = String(state.selectedPlant?.name || "");
+  state.detailNameEditing = false;
+  renderCurrentView();
+}
+
+function handleOpenPlant(plantId) {
   clearDetailPreview();
-  const file = event.target.files?.[0];
-  if (!file) {
-    updateDetailPreviewSlot();
-    return;
-  }
-  state.detailPreviewUrl = URL.createObjectURL(file);
-  updateDetailPreviewSlot();
-}
-
-function bindDynamicRouteLinks(root) {
-  root.querySelectorAll("[data-open-plant]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const plantId = button.getAttribute("data-open-plant");
-      if (!plantId) return;
-      clearDetailPreview();
-      setRoute(`/plant/${encodeURIComponent(plantId)}`);
-    });
-  });
+  setRoute(`/plant/${encodeURIComponent(plantId)}`, syncRoute);
 }
 
 async function loadPlants() {
-  const response = await fetch("/api/plants");
-  if (!response.ok) {
-    throw new Error("Could not load plants.");
-  }
-  const data = await response.json();
-  state.plants = data.plants || [];
+  state.plants = await fetchPlants();
 }
 
 async function loadPlantDetail(plantId) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}`);
-  if (!response.ok) {
-    if (response.status === 404) {
-      state.selectedPlant = null;
-      return;
-    }
-    throw new Error("Could not load plant detail.");
+  state.selectedPlant = await fetchPlantDetail(plantId);
+}
+
+async function refreshSessionState() {
+  const payload = await fetchSession();
+  state.sessionClaimable = Boolean(payload.claimable_legacy_garden);
+  if (payload.user) {
+    state.authNeedsName = false;
+    setCurrentUser(payload.user);
+    return payload.user;
   }
-  const data = await response.json();
-  state.selectedPlant = data.plant;
+  setCurrentUser(null);
+  return null;
+}
+
+async function bootstrapSession() {
+  state.rememberedUser = readRememberedUser();
+  setApiUserId(readStoredSessionUserId());
+  try {
+    return await refreshSessionState();
+  } catch (error) {
+    setCurrentUser(null);
+    throw error;
+  }
+}
+
+async function applyPlantUpdate(patch) {
+  if (!state.selectedPlant) {
+    throw new Error("Plant not found.");
+  }
+  const plant = await patchPlant(state.selectedPlant.id, patch);
+  state.selectedPlant = plant;
+  state.detailEditorPlantId = plant.id;
+  state.detailDraftName = String(plant.name || "");
+  await loadPlants();
+}
+
+async function saveDetailName() {
+  if (!state.selectedPlant || state.detailNameSaving) {
+    return;
+  }
+
+  const nextName = state.detailDraftName.trim();
+  if (!nextName) {
+    showToast("Plant name cannot be empty");
+    return;
+  }
+  if (nextName === state.selectedPlant.name) {
+    state.detailNameEditing = false;
+    renderCurrentView();
+    return;
+  }
+
+  state.detailNameSaving = true;
+  renderCurrentView();
+  try {
+    await applyPlantUpdate({ name: nextName });
+    state.detailNameEditing = false;
+    showToast("Plant name updated");
+  } catch (error) {
+    showToast(error.message || "Could not update plant name");
+  } finally {
+    state.detailNameSaving = false;
+    renderCurrentView();
+  }
+}
+
+function handleSwitchProfile() {
+  clearCurrentUser();
+  if (elements.authForm) {
+    elements.authForm.reset();
+  }
+  if (state.rememberedUser?.email && elements.authEmailInput) {
+    elements.authEmailInput.value = state.rememberedUser.email;
+  }
+  showToast("Choose a garden profile");
+  renderCurrentView();
+}
+
+async function handleResumeRememberedGarden() {
+  const remembered = state.rememberedUser;
+  if (!remembered?.id) {
+    return;
+  }
+  state.authSubmitting = true;
+  renderCurrentView();
+  try {
+    setApiUserId(remembered.id);
+    storeSessionUserId(remembered.id);
+    await refreshSessionState();
+    await loadPlants();
+    state.selectedPlant = null;
+    showToast(`Welcome back, ${state.currentUser?.name || "friend"}`);
+    setRoute("/garden", syncRoute);
+  } catch (error) {
+    storeSessionUserId("");
+    storeRememberedUser(null);
+    setApiUserId("");
+    showToast(error.message || "Could not open that garden");
+    renderCurrentView();
+  } finally {
+    state.authSubmitting = false;
+    renderCurrentView();
+  }
 }
 
 async function handleDeletePlant() {
@@ -748,55 +447,64 @@ async function handleDeletePlant() {
   }
 
   try {
-    const response = await fetch(`/api/plants/${encodeURIComponent(route.plantId)}`, {
-      method: "DELETE",
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Could not delete plant.");
-    }
+    await deletePlantRequest(route.plantId);
     clearDetailPreview();
     await loadPlants();
     state.selectedPlant = null;
     showToast("Plant deleted");
-    setRoute("/garden");
+    setRoute("/garden", syncRoute);
   } catch (error) {
     showToast(error.message || "Could not delete plant");
   }
 }
 
+async function handleDeleteCheckin(checkinId) {
+  if (!state.selectedPlant) {
+    return;
+  }
+
+  const confirmed = window.confirm("Delete this diagnosis? This cannot be undone.");
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await deleteCheckinRequest(checkinId);
+    await loadPlants();
+    await loadPlantDetail(state.selectedPlant.id);
+    renderCurrentView();
+    showToast("Diagnosis deleted");
+  } catch (error) {
+    showToast(error.message || "Could not delete diagnosis");
+  }
+}
+
 async function fetchIntakeSuggestion(signature) {
-  const file = intakePhotoInput?.files?.[0];
+  const file = elements.intakePhotoInput?.files?.[0];
   if (!file) {
-    resetIntakeSuggestion();
-    renderAddView();
+    resetIntakeSuggestion(state);
+    renderCurrentView();
     return;
   }
 
   const requestId = ++state.intakeSuggestionRequestId;
   state.intakeSuggestionLoading = true;
-  renderAddView();
+  renderCurrentView();
 
   const payload = new FormData();
   payload.append("photo", file);
 
   try {
-    const response = await fetch("/api/plant-identity-preview", {
-      method: "POST",
-      body: payload,
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Could not identify this plant.");
-    }
+    const data = await requestPlantIdentityPreview(payload);
     if (requestId !== state.intakeSuggestionRequestId) {
       return;
     }
     state.intakeSuggestion = normalizeSuggestion(data.suggestion || {});
     state.intakeDiagnosis = normalizeDiagnosis(data.diagnosis);
+    state.intakeTip = normalizeTip(data.tip);
     state.intakeUploadToken = String(data.upload_token || "").trim();
     state.intakeSuggestionSignature = signature;
-    syncIntakePlantNameFromSuggestion(state.intakeSuggestion);
+    syncIntakePlantNameFromSuggestion(state, state.intakeSuggestion);
   } catch (error) {
     if (requestId !== state.intakeSuggestionRequestId) {
       return;
@@ -806,12 +514,13 @@ async function fetchIntakeSuggestion(signature) {
       caption: error.message || "We could not analyze that photo just yet.",
     });
     state.intakeDiagnosis = null;
+    state.intakeTip = null;
     state.intakeUploadToken = "";
     state.intakeSuggestionSignature = signature;
   } finally {
     if (requestId === state.intakeSuggestionRequestId) {
       state.intakeSuggestionLoading = false;
-      renderAddView();
+      renderCurrentView();
     }
   }
 }
@@ -826,31 +535,76 @@ function handleIdentifyPlantClick() {
 }
 
 function renderCurrentView() {
-  setActiveTab();
+  if (!state.currentUser) {
+    renderAuthView();
+    return;
+  }
 
+  renderSessionBar();
+  setActiveTab();
   if (state.route.name === "add") {
     showView("add");
-    renderAddView();
+    renderAddView({
+      state,
+      elements,
+      intakeSignature,
+      knownRooms,
+      setPlantNameEditing,
+      syncIntakePlantNameFromSuggestion: (suggestion) =>
+        syncIntakePlantNameFromSuggestion(state, suggestion),
+      onOpenPhotoPicker: openAddPhotoPicker,
+    });
     return;
   }
 
   if (state.route.name === "garden") {
     showView("garden");
-    renderGarden();
+    renderGarden({
+      state,
+      gardenViewEl: elements.gardenViewEl,
+      onOpenPlant: handleOpenPlant,
+    });
     return;
   }
 
   showView("detail");
   if (state.route.name === "checkin") {
-    renderCheckinView();
+    renderCheckinView({
+      state,
+      detailViewEl: elements.detailViewEl,
+      actions: {
+        onDetailPhotoPreview: handleDetailPhotoPreview,
+        onOpenCheckinPhotoPicker: openCheckinPhotoPicker,
+        onCheckinSubmit: handleCheckinSubmit,
+      },
+    });
     return;
   }
-  renderDetail();
+
+  renderDetail({
+    state,
+    detailViewEl: elements.detailViewEl,
+    syncDetailEditorState: () => syncDetailEditorState(state),
+    actions: {
+      onStartEditName: handleStartEditDetailName,
+      onDetailNameInput: (value) => {
+        state.detailDraftName = value;
+      },
+      onSaveDetailName: saveDetailName,
+      onCancelEditName: handleCancelEditDetailName,
+      onDeletePlant: handleDeletePlant,
+      onDeleteCheckin: handleDeleteCheckin,
+    },
+  });
 }
 
 async function syncRoute() {
   const route = routeFromHash();
   state.route = route;
+  if (!state.currentUser) {
+    renderCurrentView();
+    return;
+  }
   await loadPlants();
 
   if (route.name === "detail" || route.name === "checkin") {
@@ -858,7 +612,7 @@ async function syncRoute() {
     if (!exists) {
       state.selectedPlant = null;
       showToast("That plant could not be found");
-      setRoute("/garden");
+      setRoute("/garden", syncRoute);
       return;
     }
     await loadPlantDetail(route.plantId);
@@ -871,9 +625,9 @@ async function syncRoute() {
 
 async function handleAddPlantSubmit(event) {
   event.preventDefault();
-  const photoFile = intakePhotoInput?.files?.[0] || null;
-  const locationValue = intakeLocationInput?.value?.trim() || "";
-  const customNameValue = plantNameInput?.value?.trim() || "";
+  const photoFile = elements.intakePhotoInput?.files?.[0] || null;
+  const locationValue = elements.intakeLocationInput?.value?.trim() || "";
+  const customNameValue = elements.plantNameInput?.value?.trim() || "";
 
   if (!photoFile) {
     showToast("Take a photo first");
@@ -908,8 +662,14 @@ async function handleAddPlantSubmit(event) {
   if (activeSuggestion?.species && state.intakeSuggestionSignature === intakeSignature()) {
     payload.append("species", activeSuggestion.species);
   }
+  if (activeSuggestion?.chinese_name && state.intakeSuggestionSignature === intakeSignature()) {
+    payload.append("chinese_name", activeSuggestion.chinese_name);
+  }
   if (activeDiagnosis) {
     payload.append("diagnosis_payload", JSON.stringify(activeDiagnosis));
+  }
+  if (state.intakeTip) {
+    payload.append("tip_payload", JSON.stringify(state.intakeTip));
   }
 
   const saveButton = document.getElementById("save-plant");
@@ -917,22 +677,15 @@ async function handleAddPlantSubmit(event) {
   saveButton.textContent = "Saving...";
 
   try {
-    const response = await fetch("/api/plants", {
-      method: "POST",
-      body: payload,
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Could not save plant.");
-    }
+    const data = await createPlantRequest(payload);
 
-    addPlantForm.reset();
+    elements.addPlantForm.reset();
     clearIntakePreview();
-    resetIntakeSuggestion();
+    resetIntakeSuggestion(state);
     resetPurchaseDateInput();
-    renderAddView();
+    renderCurrentView();
     showToast(`Saved ${data.plant.name}`);
-    setRoute(`/plant/${encodeURIComponent(data.plant.id)}`);
+    setRoute(`/plant/${encodeURIComponent(data.plant.id)}`, syncRoute);
   } catch (error) {
     showToast(error.message || "Could not save plant");
   } finally {
@@ -968,66 +721,142 @@ async function handleCheckinSubmit(event) {
   submitButton.textContent = "Diagnosing...";
 
   try {
-    const response = await fetch(`/api/plants/${encodeURIComponent(route.plantId)}/checkins`, {
-      method: "POST",
-      body: payload,
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Could not save check-in.");
-    }
+    await createCheckinRequest(route.plantId, payload);
 
     clearDetailPreview();
     showToast("Check-in saved");
-    setRoute(`/plant/${encodeURIComponent(route.plantId)}`);
+    setRoute(`/plant/${encodeURIComponent(route.plantId)}`, syncRoute);
   } catch (error) {
     showToast(error.message || "Could not save check-in");
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Save diagnosis";
+    submitButton.textContent = "Diagnose and save";
   }
 }
 
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const name = elements.authNameInput?.value?.trim() || "";
+  const email = elements.authEmailInput?.value?.trim() || "";
+  if (!email) {
+    showToast("Add your email first");
+    return;
+  }
+  if (state.authNeedsName && !name) {
+    showToast("Add your name to finish opening this garden");
+    return;
+  }
+
+  state.authSubmitting = true;
+  renderCurrentView();
+  try {
+    const payload = await createSessionRequest({
+      name: state.authNeedsName ? name : "",
+      email,
+    });
+    setCurrentUser(payload.user || null);
+    state.sessionClaimable = Boolean(payload.claimable_legacy_garden);
+    state.authNeedsName = false;
+    await loadPlants();
+    state.selectedPlant = null;
+    resetPurchaseDateInput();
+    renderCurrentView();
+    showToast(payload.claimed_legacy_garden ? "Garden claimed" : `Welcome, ${state.currentUser?.name || "friend"}`);
+    setRoute("/garden", syncRoute);
+  } catch (error) {
+    if ((error.message || "").includes("Add your name to create a new garden.")) {
+      state.authNeedsName = true;
+      renderCurrentView();
+      queueMicrotask(() => elements.authNameInput?.focus());
+    }
+    showToast(error.message || "Could not open your garden");
+  } finally {
+    state.authSubmitting = false;
+    renderCurrentView();
+  }
+}
+
+function handleIntakePhotoChange(event) {
+  clearIntakePreview();
+  const file = event.target.files?.[0];
+  if (file) {
+    state.intakePreviewUrl = URL.createObjectURL(file);
+  }
+  resetIntakeSuggestion(state);
+  renderCurrentView();
+}
+
+function handleDetailPhotoPreview(event) {
+  clearDetailPreview();
+  const file = event.target.files?.[0];
+  if (!file) {
+    updateDetailPreviewSlot({
+      state,
+      onOpenCheckinPhotoPicker: openCheckinPhotoPicker,
+    });
+    return;
+  }
+  state.detailPreviewUrl = URL.createObjectURL(file);
+  updateDetailPreviewSlot({
+    state,
+    onOpenCheckinPhotoPicker: openCheckinPhotoPicker,
+  });
+}
+
 function bindStaticEvents() {
-  tabButtons.forEach((button) => {
+  elements.authForm?.addEventListener("submit", handleAuthSubmit);
+  elements.switchProfileButton?.addEventListener("click", () => {
+    if (elements.switchProfileButton.dataset.mode === "resume") {
+      void handleResumeRememberedGarden();
+      return;
+    }
+    handleSwitchProfile();
+  });
+  elements.authEmailInput?.addEventListener("input", () => {
+    if (state.authNeedsName) {
+      state.authNeedsName = false;
+      renderCurrentView();
+    }
+  });
+  elements.tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const route = button.getAttribute("data-route");
       if (!route) return;
       clearDetailPreview();
-      setRoute(`/${route}`);
+      setRoute(`/${route}`, syncRoute);
     });
   });
 
-  addPlantForm.addEventListener("submit", handleAddPlantSubmit);
-  intakePhotoInput?.addEventListener("change", handleIntakePhotoChange);
-  plantNameInput?.addEventListener("input", () => {
-    state.intakePlantName = plantNameInput.value;
+  elements.addPlantForm.addEventListener("submit", handleAddPlantSubmit);
+  elements.intakePhotoInput?.addEventListener("change", handleIntakePhotoChange);
+  elements.plantNameInput?.addEventListener("input", () => {
+    state.intakePlantName = elements.plantNameInput.value;
     state.intakePlantNameTouched = true;
   });
-  plantNameInput?.addEventListener("blur", () => {
-    state.intakePlantName = plantNameInput.value.trim();
+  elements.plantNameInput?.addEventListener("blur", () => {
+    state.intakePlantName = elements.plantNameInput.value.trim();
     if (state.intakePlantName) {
       setPlantNameEditing(false);
     }
   });
-  plantNameInput?.addEventListener("keydown", (event) => {
+  elements.plantNameInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      state.intakePlantName = plantNameInput.value.trim();
+      state.intakePlantName = elements.plantNameInput.value.trim();
       if (state.intakePlantName) {
         setPlantNameEditing(false);
       }
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      plantNameInput.value = state.intakePlantName;
+      elements.plantNameInput.value = state.intakePlantName;
       setPlantNameEditing(false);
     }
   });
-  editPlantNameButton?.addEventListener("click", () => {
+  elements.editPlantNameButton?.addEventListener("click", () => {
     setPlantNameEditing(true);
   });
-  identifyPlantButton?.addEventListener("click", handleIdentifyPlantClick);
+  elements.identifyPlantButton?.addEventListener("click", handleIdentifyPlantClick);
   window.addEventListener("hashchange", syncRoute);
 }
 
@@ -1040,12 +869,14 @@ async function boot() {
     window.location.hash = "#/add";
   }
 
-  resetIntakeSuggestion();
+  resetIntakeSuggestion(state);
+  resetDetailEditorState(state);
 
   try {
+    await bootstrapSession();
     await syncRoute();
   } catch (error) {
-    addViewEl.innerHTML = `
+    elements.addViewEl.innerHTML = `
       <div class="panel empty-card">
         <p class="eyebrow">Something went wrong</p>
         <h2>We could not load your garden</h2>

@@ -1,0 +1,74 @@
+import { defaultSuggestion, isUnknownSuggestionName } from "/static/js/helpers.js";
+
+export function createInitialState() {
+  return {
+    currentUser: null,
+    rememberedUser: null,
+    sessionClaimable: false,
+    authSubmitting: false,
+    authNeedsName: false,
+    plants: [],
+    selectedPlant: null,
+    route: { name: "add" },
+    intakePreviewUrl: null,
+    detailPreviewUrl: null,
+    intakeSuggestion: defaultSuggestion(),
+    intakeDiagnosis: null,
+    intakeTip: null,
+    intakeUploadToken: "",
+    intakeSuggestionLoading: false,
+    intakeSuggestionRequestId: 0,
+    intakeSuggestionSignature: "",
+    intakePlantName: "",
+    intakePlantNameTouched: false,
+    intakePlantNameEditing: false,
+    detailEditorPlantId: "",
+    detailDraftName: "",
+    detailNameEditing: false,
+    detailNameSaving: false,
+    toastTimer: null,
+  };
+}
+
+export function resetIntakeSuggestion(state) {
+  state.intakeSuggestion = defaultSuggestion();
+  state.intakeDiagnosis = null;
+  state.intakeTip = null;
+  state.intakeUploadToken = "";
+  state.intakeSuggestionLoading = false;
+  state.intakeSuggestionSignature = "";
+  state.intakePlantName = "";
+  state.intakePlantNameTouched = false;
+  state.intakePlantNameEditing = false;
+}
+
+export function syncIntakePlantNameFromSuggestion(state, suggestion) {
+  if (state.intakePlantNameTouched) {
+    return;
+  }
+  state.intakePlantName = isUnknownSuggestionName(suggestion?.name) ? "" : String(suggestion?.name || "").trim();
+}
+
+export function resetDetailEditorState(state) {
+  const plant = state.selectedPlant;
+  state.detailEditorPlantId = plant?.id || "";
+  state.detailDraftName = String(plant?.name || "");
+  state.detailNameEditing = false;
+  state.detailNameSaving = false;
+}
+
+export function resetSessionState(state) {
+  state.currentUser = null;
+  state.authNeedsName = false;
+  state.authSubmitting = false;
+}
+
+export function syncDetailEditorState(state) {
+  if (!state.selectedPlant) {
+    resetDetailEditorState(state);
+    return;
+  }
+  if (state.detailEditorPlantId !== state.selectedPlant.id) {
+    resetDetailEditorState(state);
+  }
+}

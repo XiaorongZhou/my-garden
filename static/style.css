@@ -21,6 +21,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -50,6 +54,36 @@ button {
   width: min(100%, 460px);
   margin: 0 auto;
   padding: 20px 16px calc(122px + env(safe-area-inset-bottom, 0px));
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 252, 247, 0.8);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.session-copy {
+  min-width: 0;
+}
+
+.session-copy .eyebrow {
+  margin-bottom: 4px;
+}
+
+.session-copy h3 {
+  margin-bottom: 2px;
+}
+
+.session-bar .section-note {
+  font-size: 0.92rem;
 }
 
 .hero,
@@ -261,6 +295,14 @@ h3 {
   margin-top: 18px;
 }
 
+.auth-panel {
+  gap: 16px;
+}
+
+.remembered-garden {
+  margin-top: 4px;
+}
+
 .panel,
 .detail-shell {
   padding: 18px;
@@ -413,6 +455,55 @@ input:focus::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.detail-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.detail-name-stack {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.detail-name-stack h2 {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.05;
+}
+
+.detail-edit-button {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.detail-secondary-name {
+  margin: 2px 0 0;
+  color: var(--leaf);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.plant-hero-copy > .detail-meta {
+  margin-top: 4px;
+}
+
+.detail-name-input {
+  margin: 0;
+  min-width: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  padding: 10px 12px;
 }
 
 .icon-edit-button {
@@ -632,6 +723,31 @@ input:focus::placeholder {
   margin: 0;
 }
 
+.context-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.context-note-button,
+.context-save-button {
+  min-height: 40px;
+}
+
+.context-save-button {
+  padding: 0 16px;
+}
+
+.detail-note-editor {
+  display: grid;
+}
+
+.detail-note-editor textarea {
+  min-height: 112px;
+}
+
 .info-card,
 .checkin-card,
 .history-card,
@@ -778,9 +894,20 @@ textarea {
   border-top: 1px solid rgba(73, 74, 53, 0.08);
 }
 
+.history-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .history-panel-block {
   display: grid;
   gap: 6px;
+}
+
+.latest-note-block {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(73, 74, 53, 0.08);
 }
 
 .history-panel-label {
@@ -817,6 +944,10 @@ textarea {
   margin-top: 10px;
 }
 
+.checkin-card .inline-cta {
+  margin-top: 0;
+}
+
 .danger-zone {
   padding-top: 6px;
 }
@@ -826,6 +957,12 @@ textarea {
   border-color: rgba(153, 99, 74, 0.25);
   color: #8b4a34;
   background: rgba(255, 248, 245, 0.92);
+}
+
+.history-delete-button {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
 }
 
 .toast {

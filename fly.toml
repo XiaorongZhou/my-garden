@@ -1,6 +1,6 @@
 # fly.toml app configuration file for My Garden
 
-app = "my-garden-alicia-zhou"
+app = "my-garden"
 primary_region = "sjc"
 
 [build]

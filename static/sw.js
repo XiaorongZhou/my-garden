@@ -1,4 +1,4 @@
-const CACHE_NAME = "my-garden-v12";
+const CACHE_NAME = "my-garden-v20";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -12,6 +12,7 @@ const APP_SHELL = [
   "/static/js/views/add-view.js",
   "/static/js/views/garden-view.js",
   "/static/js/views/detail-view.js",
+  "/static/js/views/chat-view.js",
   "/apple-touch-icon.png",
   "/icon-192.png",
   "/icon-512.png",

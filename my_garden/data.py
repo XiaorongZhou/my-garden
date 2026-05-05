@@ -19,7 +19,12 @@ def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def today_date_iso() -> str:
+    return datetime.now().date().isoformat()
+
+
 def get_conn() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -84,9 +89,64 @@ def init_db() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_threads (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                plant_id TEXT NOT NULL,
+                rolling_summary TEXT NOT NULL DEFAULT '',
+                open_questions_json TEXT NOT NULL DEFAULT '[]',
+                last_advice_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (plant_id) REFERENCES plants(id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                plant_id TEXT NOT NULL,
+                checkin_id TEXT,
+                role TEXT NOT NULL,
+                body TEXT NOT NULL,
+                suggested_actions_json TEXT NOT NULL DEFAULT '[]',
+                watch_signals_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (thread_id) REFERENCES chat_threads(id),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (plant_id) REFERENCES plants(id),
+                FOREIGN KEY (checkin_id) REFERENCES checkins(id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS waterings (
+                id TEXT PRIMARY KEY,
+                plant_id TEXT NOT NULL,
+                watered_on TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (plant_id) REFERENCES plants(id)
+            )
+            """
+        )
         columns = {
             str(row["name"]): row
             for row in connection.execute("PRAGMA table_info(plants)").fetchall()
+        }
+        thread_columns = {
+            str(row["name"]): row
+            for row in connection.execute("PRAGMA table_info(chat_threads)").fetchall()
+        }
+        message_columns = {
+            str(row["name"]): row
+            for row in connection.execute("PRAGMA table_info(chat_messages)").fetchall()
         }
         if "note_origin" not in columns:
             connection.execute(
@@ -110,11 +170,49 @@ def init_db() -> None:
             connection.execute(
                 "ALTER TABLE plants ADD COLUMN tip_source TEXT NOT NULL DEFAULT 'empty'"
             )
+        if "rolling_summary" not in thread_columns:
+            connection.execute(
+                "ALTER TABLE chat_threads ADD COLUMN rolling_summary TEXT NOT NULL DEFAULT ''"
+            )
+        if "open_questions_json" not in thread_columns:
+            connection.execute(
+                "ALTER TABLE chat_threads ADD COLUMN open_questions_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        if "last_advice_json" not in thread_columns:
+            connection.execute(
+                "ALTER TABLE chat_threads ADD COLUMN last_advice_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        if "suggested_actions_json" not in message_columns:
+            connection.execute(
+                "ALTER TABLE chat_messages ADD COLUMN suggested_actions_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        if "watch_signals_json" not in message_columns:
+            connection.execute(
+                "ALTER TABLE chat_messages ADD COLUMN watch_signals_json TEXT NOT NULL DEFAULT '[]'"
+            )
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_plants_user_id ON plants(user_id)"
         )
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_checkins_plant_id ON checkins(plant_id)"
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_threads_user_plant ON chat_threads(user_id, plant_id)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_threads_user_id ON chat_threads(user_id)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_id ON chat_messages(thread_id)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_messages_plant_id ON chat_messages(plant_id)"
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_waterings_plant_day ON waterings(plant_id, watered_on)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_waterings_plant_id ON waterings(plant_id)"
         )
         connection.commit()
         migrate_users_and_ownership(connection)
@@ -238,6 +336,104 @@ def create_checkin(
             diagnosis_title,
             diagnosis_summary,
             json_dumps(care_steps),
+            created_at,
+        ),
+    )
+    connection.execute("UPDATE plants SET updated_at = ? WHERE id = ?", (created_at, plant_id))
+
+
+def create_chat_thread(
+    connection: sqlite3.Connection,
+    *,
+    thread_id: str,
+    user_id: str,
+    plant_id: str,
+    created_at: str,
+    rolling_summary: str = "",
+    open_questions: list[str] | None = None,
+    last_advice: list[str] | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO chat_threads (
+            id, user_id, plant_id, rolling_summary, open_questions_json, last_advice_json,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            thread_id,
+            user_id,
+            plant_id,
+            rolling_summary.strip(),
+            json_dumps(open_questions or []),
+            json_dumps(last_advice or []),
+            created_at,
+            created_at,
+        ),
+    )
+
+
+def create_chat_message(
+    connection: sqlite3.Connection,
+    *,
+    message_id: str,
+    thread_id: str,
+    user_id: str,
+    plant_id: str,
+    checkin_id: str | None,
+    role: str,
+    body: str,
+    suggested_actions: list[str] | None,
+    watch_signals: list[str] | None,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO chat_messages (
+            id, thread_id, user_id, plant_id, checkin_id, role, body,
+            suggested_actions_json, watch_signals_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            message_id,
+            thread_id,
+            user_id,
+            plant_id,
+            checkin_id,
+            role,
+            body.strip(),
+            json_dumps(suggested_actions or []),
+            json_dumps(watch_signals or []),
+            created_at,
+        ),
+    )
+    connection.execute(
+        "UPDATE chat_threads SET updated_at = ? WHERE id = ?",
+        (created_at, thread_id),
+    )
+
+
+def create_watering_event(
+    connection: sqlite3.Connection,
+    *,
+    watering_id: str,
+    plant_id: str,
+    watered_on: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO waterings (
+            id, plant_id, watered_on, created_at
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            watering_id,
+            plant_id,
+            watered_on,
             created_at,
         ),
     )
@@ -733,6 +929,98 @@ def list_checkin_rows(connection: sqlite3.Connection, plant_id: str) -> list[sql
     ).fetchall()
 
 
+def list_watering_rows(connection: sqlite3.Connection, plant_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT *
+        FROM waterings
+        WHERE plant_id = ?
+        ORDER BY date(watered_on) DESC, datetime(created_at) DESC, id DESC
+        """,
+        (plant_id,),
+    ).fetchall()
+
+
+def fetch_watering_row(
+    connection: sqlite3.Connection,
+    *,
+    plant_id: str,
+    watered_on: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        "SELECT * FROM waterings WHERE plant_id = ? AND watered_on = ?",
+        (plant_id, watered_on),
+    ).fetchone()
+
+
+def fetch_chat_thread_for_plant(
+    connection: sqlite3.Connection,
+    *,
+    plant_id: str,
+    user_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        "SELECT * FROM chat_threads WHERE plant_id = ? AND user_id = ?",
+        (plant_id, user_id),
+    ).fetchone()
+
+
+def fetch_or_create_chat_thread(
+    connection: sqlite3.Connection,
+    *,
+    plant_id: str,
+    user_id: str,
+) -> sqlite3.Row:
+    existing = fetch_chat_thread_for_plant(connection, plant_id=plant_id, user_id=user_id)
+    if existing is not None:
+        return existing
+
+    created_at = now_iso()
+    thread_id = str(uuid.uuid4())
+    while connection.execute("SELECT 1 FROM chat_threads WHERE id = ?", (thread_id,)).fetchone():
+        thread_id = str(uuid.uuid4())
+    create_chat_thread(
+        connection,
+        thread_id=thread_id,
+        user_id=user_id,
+        plant_id=plant_id,
+        created_at=created_at,
+    )
+    return fetch_chat_thread_for_plant(connection, plant_id=plant_id, user_id=user_id)
+
+
+def list_chat_message_rows(
+    connection: sqlite3.Connection,
+    thread_id: str,
+    *,
+    limit: int | None = None,
+) -> list[sqlite3.Row]:
+    if limit is not None and limit > 0:
+        return connection.execute(
+            """
+            SELECT *
+            FROM (
+                SELECT *
+                FROM chat_messages
+                WHERE thread_id = ?
+                ORDER BY datetime(created_at) DESC, id DESC
+                LIMIT ?
+            )
+            ORDER BY datetime(created_at) ASC, id ASC
+            """,
+            (thread_id, limit),
+        ).fetchall()
+    return connection.execute(
+        """
+        SELECT *
+        FROM chat_messages
+        WHERE thread_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+        """,
+        (thread_id,),
+    ).fetchall()
+
+
 def latest_checkin_row(connection: sqlite3.Connection, plant_id: str) -> sqlite3.Row | None:
     rows = list_checkin_rows(connection, plant_id)
     return rows[0] if rows else None
@@ -748,6 +1036,34 @@ def serialize_checkin(row: sqlite3.Row) -> dict[str, object]:
         "diagnosis_title": row["diagnosis_title"],
         "diagnosis_summary": row["diagnosis_summary"],
         "care_steps": json_loads(row["care_steps_json"], []),
+        "created_at": row["created_at"],
+    }
+
+
+def serialize_chat_thread(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "plant_id": row["plant_id"],
+        "rolling_summary": str(row["rolling_summary"] or "").strip(),
+        "open_questions": json_loads(row["open_questions_json"], []),
+        "last_advice": json_loads(row["last_advice_json"], []),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def serialize_chat_message(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "thread_id": row["thread_id"],
+        "user_id": row["user_id"],
+        "plant_id": row["plant_id"],
+        "checkin_id": row["checkin_id"],
+        "role": row["role"],
+        "body": row["body"],
+        "suggested_actions": json_loads(row["suggested_actions_json"], []),
+        "watch_signals": json_loads(row["watch_signals_json"], []),
         "created_at": row["created_at"],
     }
 
@@ -791,12 +1107,19 @@ def serialize_plant_summary(connection: sqlite3.Connection, row: sqlite3.Row) ->
 
 def serialize_plant_detail(connection: sqlite3.Connection, row: sqlite3.Row) -> dict[str, object]:
     checkins = [serialize_checkin(checkin_row) for checkin_row in list_checkin_rows(connection, row["id"])]
+    watering_rows = list_watering_rows(connection, row["id"])
+    watering_dates = [str(watering_row["watered_on"]) for watering_row in watering_rows]
+    last_watered_on = watering_dates[0] if watering_dates else None
     summary = serialize_plant_summary(connection, row)
     return {
         **summary,
         "created_at": row["created_at"],
         "checkins": checkins,
         "latest_checkin": checkins[0] if checkins else None,
+        "watering_dates": watering_dates,
+        "watering_count": len(watering_dates),
+        "watered_today": today_date_iso() in set(watering_dates),
+        "last_watered_on": last_watered_on,
     }
 
 
@@ -805,3 +1128,28 @@ def make_plant_id(connection: sqlite3.Connection) -> str:
     while connection.execute("SELECT 1 FROM plants WHERE id = ?", (candidate,)).fetchone():
         candidate = str(uuid.uuid4())
     return candidate
+
+
+def update_chat_thread_memory(
+    connection: sqlite3.Connection,
+    *,
+    thread_id: str,
+    rolling_summary: str,
+    open_questions: list[str],
+    last_advice: list[str],
+    updated_at: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE chat_threads
+        SET rolling_summary = ?, open_questions_json = ?, last_advice_json = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            rolling_summary.strip(),
+            json_dumps(open_questions),
+            json_dumps(last_advice),
+            updated_at,
+            thread_id,
+        ),
+    )

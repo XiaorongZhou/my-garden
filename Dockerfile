@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY . /app
+
+ENV HOST=0.0.0.0
+ENV PORT=8080
+ENV MY_GARDEN_DB_PATH=/data/my_garden.db
+ENV MY_GARDEN_UPLOAD_DIR=/data/uploads
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8080
+
+CMD ["python3", "-S", "app.py"]

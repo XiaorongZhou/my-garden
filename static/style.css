@@ -321,12 +321,19 @@ h3 {
 .inline-status,
 .garden-row-head,
 .info-card-title,
-.history-title,
-.detail-topbar {
+.history-title {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.detail-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: fit-content;
+  justify-self: start;
 }
 
 .summary-grid,
@@ -496,6 +503,140 @@ input:focus::placeholder {
   margin-top: 4px;
 }
 
+.latest-followup-button {
+  width: fit-content;
+  margin-top: 14px;
+}
+
+.watering-card {
+  gap: 14px;
+}
+
+.watering-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.watering-head h3 {
+  font-size: 1.02rem;
+}
+
+.watering-button {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 107, 77, 0.16);
+  background: rgba(255, 252, 247, 0.96);
+  color: var(--leaf);
+  box-shadow: 0 8px 18px rgba(55, 45, 24, 0.08);
+}
+
+.watering-button span {
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.watering-button.is-active {
+  background: linear-gradient(180deg, #456f4f 0%, #2f543a 100%);
+  color: #f7f5ee;
+  border-color: transparent;
+}
+
+.watering-calendar-label,
+.watering-calendar-hint {
+  margin: 0;
+}
+
+.watering-calendar {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(73, 74, 53, 0.08);
+  background: rgba(255, 252, 247, 0.76);
+}
+
+.watering-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.watering-calendar-label {
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.watering-calendar-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.watering-weekdays,
+.watering-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.watering-weekdays span {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.watering-day {
+  min-height: 42px;
+  border-radius: 14px;
+  border: 1px solid rgba(73, 74, 53, 0.08);
+  background: rgba(255, 252, 247, 0.92);
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  padding: 4px 2px;
+}
+
+.watering-day-empty {
+  min-height: 42px;
+}
+
+.watering-day.is-today {
+  border-color: rgba(61, 107, 77, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(61, 107, 77, 0.1);
+}
+
+.watering-day.is-watered {
+  background: linear-gradient(180deg, rgba(223, 233, 216, 0.9), rgba(236, 244, 232, 0.95));
+}
+
+.watering-day-number {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.watering-drop {
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.history-chat-button {
+  min-height: 40px;
+}
+
 .detail-name-input {
   margin: 0;
   min-width: 0;
@@ -584,6 +725,8 @@ input:focus::placeholder {
 .empty-photo {
   display: grid;
   place-items: center;
+  width: 100%;
+  height: 100%;
   color: rgba(255, 250, 242, 0.92);
   font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-size: 1.25rem;
@@ -884,7 +1027,52 @@ textarea {
 
 .history-photo {
   width: 92px;
+  height: 112px;
   min-height: 112px;
+  display: grid;
+  place-items: center;
+}
+
+.history-photo .empty-photo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  justify-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  text-align: center;
+  line-height: 1;
+}
+
+input[type="date"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding-right: 38px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="date"]::-webkit-datetime-edit {
+  padding: 0;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: left;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  margin: 0;
+  padding: 0;
 }
 
 .history-panel {
@@ -928,8 +1116,118 @@ textarea {
   place-items: start;
 }
 
+.chat-shell {
+  gap: 18px;
+}
+
+.chat-header-block,
+.chat-thread,
+.chat-prompts,
+.chat-composer-card,
+.chat-context-card {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-header-block {
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(73, 74, 53, 0.08);
+}
+
+.chat-context-card,
+.chat-thread,
+.chat-prompts,
+.chat-composer-card {
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: rgba(255, 252, 247, 0.78);
+}
+
+.chat-context-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-context-card h3 {
+  font-size: 1.12rem;
+}
+
+.chat-message-list {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-bubble {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(73, 74, 53, 0.1);
+}
+
+.chat-bubble-assistant {
+  background: rgba(255, 252, 247, 0.92);
+}
+
+.chat-bubble-user {
+  margin-left: 28px;
+  background: linear-gradient(180deg, rgba(223, 233, 216, 0.88), rgba(232, 240, 226, 0.92));
+}
+
+.chat-bubble-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chat-bubble-copy p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.chat-bubble-meta {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(73, 74, 53, 0.08);
+}
+
+.compact-care-list {
+  gap: 8px;
+  margin-top: 0;
+}
+
+.compact-care-list li {
+  overflow-wrap: anywhere;
+}
+
+.chat-prompt-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chat-prompt-button {
+  min-height: 40px;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.chat-composer-card .stack-form {
+  gap: 12px;
+}
+
+.chat-composer-card textarea {
+  min-height: 120px;
+}
+
 .back-button {
   min-height: 42px;
+  box-shadow: 0 8px 18px rgba(55, 45, 24, 0.08);
 }
 
 .icon-back-button {
@@ -1004,6 +1302,11 @@ textarea {
 
   .info-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .watering-button {
+    width: 44px;
+    min-width: 44px;
   }
 
   .history-list {

@@ -38,12 +38,82 @@ export function formatDate(value) {
   }).format(date);
 }
 
+export function parseDateOnly(value) {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  return new Date(year, monthIndex, day);
+}
+
+export function formatDateOnly(value) {
+  const date = parseDateOnly(value);
+  if (!date) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
 export function todayInputValue() {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+export function buildWateringCalendar(wateringDates, referenceDate = new Date()) {
+  const wateredSet = new Set(
+    Array.isArray(wateringDates)
+      ? wateringDates.map((value) => String(value || "").trim()).filter(Boolean)
+      : []
+  );
+  const monthStart = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+  const monthEnd = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0);
+  const leadingBlankCount = monthStart.getDay();
+  const totalCells = Math.ceil((leadingBlankCount + monthEnd.getDate()) / 7) * 7;
+  const todayKey = todayInputValue();
+  const monthLabel = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+  }).format(monthStart);
+
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const cells = Array.from({ length: totalCells }, (_unused, index) => {
+    const dayNumber = index - leadingBlankCount + 1;
+    if (dayNumber < 1 || dayNumber > monthEnd.getDate()) {
+      return {
+        key: `blank-${index}`,
+        label: "",
+        inMonth: false,
+        watered: false,
+        isToday: false,
+      };
+    }
+
+    const key = [
+      monthStart.getFullYear(),
+      String(monthStart.getMonth() + 1).padStart(2, "0"),
+      String(dayNumber).padStart(2, "0"),
+    ].join("-");
+
+    return {
+      key,
+      label: String(dayNumber),
+      inMonth: true,
+      watered: wateredSet.has(key),
+      isToday: key === todayKey,
+    };
+  });
+
+  return {
+    monthLabel,
+    weekdays,
+    cells,
+  };
 }
 
 export function statusLabel(status) {
@@ -115,6 +185,10 @@ export function historyDisclosureMarkup(checkin, plant) {
             : ""
         }
         <div class="history-panel-actions">
+          <a
+            class="ghost-button link-button history-chat-button"
+            href="#/plant/${encodeURIComponent(plant.id)}/chat?checkin_id=${encodeURIComponent(checkin.id)}"
+          >Ask follow-up</a>
           <button
             class="ghost-button danger-button history-delete-button"
             type="button"

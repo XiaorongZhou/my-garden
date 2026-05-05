@@ -64,6 +64,21 @@ export async function fetchPlantDetail(plantId) {
   return data.plant;
 }
 
+export async function fetchPlantChat(plantId, checkinId = "") {
+  const suffix = checkinId ? `?checkin_id=${encodeURIComponent(checkinId)}` : "";
+  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/chat${suffix}`, {
+    headers: authHeaders(),
+  });
+  const data = await parseJson(response, "Could not load plant chat.");
+  return {
+    plant: data.plant,
+    thread: data.thread,
+    messages: data.messages || [],
+    focused_checkin: data.focused_checkin || null,
+    suggested_prompts: data.suggested_prompts || [],
+  };
+}
+
 export async function patchPlant(plantId, patch) {
   const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}`, {
     method: "PATCH",
@@ -111,10 +126,41 @@ export async function createCheckinRequest(plantId, payload) {
   return parseJson(response, "Could not save check-in.");
 }
 
+export async function createWateringRequest(plantId, payload = {}) {
+  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/waterings`, {
+    method: "POST",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(payload),
+  });
+  return parseJson(response, "Could not save watering.");
+}
+
+export async function createPlantChatMessageRequest(plantId, payload) {
+  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/chat/messages`, {
+    method: "POST",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(payload),
+  });
+  return parseJson(response, "Could not send follow-up.");
+}
+
 export async function deleteCheckinRequest(checkinId) {
   const response = await fetch(`/api/checkins/${encodeURIComponent(checkinId)}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
   return parseJson(response, "Could not delete diagnosis.");
+}
+
+export async function deleteWateringRequest(plantId, wateredOn = "") {
+  const suffix = wateredOn ? `?date=${encodeURIComponent(wateredOn)}` : "";
+  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/waterings${suffix}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  return parseJson(response, "Could not remove watering.");
 }

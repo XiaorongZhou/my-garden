@@ -26,6 +26,12 @@ export function createInitialState() {
     detailDraftName: "",
     detailNameEditing: false,
     detailNameSaving: false,
+    chatThread: null,
+    chatMessages: [],
+    chatFocusedCheckin: null,
+    chatSuggestedPrompts: [],
+    chatDraft: "",
+    chatSending: false,
     toastTimer: null,
   };
 }
@@ -57,10 +63,20 @@ export function resetDetailEditorState(state) {
   state.detailNameSaving = false;
 }
 
+export function resetChatState(state) {
+  state.chatThread = null;
+  state.chatMessages = [];
+  state.chatFocusedCheckin = null;
+  state.chatSuggestedPrompts = [];
+  state.chatDraft = "";
+  state.chatSending = false;
+}
+
 export function resetSessionState(state) {
   state.currentUser = null;
   state.authNeedsName = false;
   state.authSubmitting = false;
+  resetChatState(state);
 }
 
 export function syncDetailEditorState(state) {

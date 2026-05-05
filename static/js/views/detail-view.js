@@ -1,7 +1,9 @@
 import {
+  buildWateringCalendar,
   escapeHtml,
   fallbackSummary,
   formatDate,
+  formatDateOnly,
   historyDisclosureMarkup,
   initialsFor,
   isNeutralStatus,
@@ -33,7 +35,10 @@ export function renderDetail({
   const latest = plant.latest_checkin;
   const heroStatus = (latest && latest.health_status) || "watch";
   const showHeroStatus = !isNeutralStatus(heroStatus);
-  const tip = plant.tip;
+  const wateringCalendar = buildWateringCalendar(plant.watering_dates || []);
+  const lastWateredLabel = plant.last_watered_on
+    ? formatDateOnly(plant.last_watered_on)
+    : "";
   const historyMarkup = plant.checkins.length
     ? plant.checkins.map((checkin) => historyDisclosureMarkup(checkin, plant)).join("")
     : `
@@ -45,11 +50,10 @@ export function renderDetail({
 
   detailViewEl.innerHTML = `
     <div class="detail-stack">
-      <div class="detail-topbar">
-        <a class="ghost-button link-button back-button icon-back-button" href="#/garden" aria-label="Back to your garden">←</a>
-      </div>
-
       <div class="detail-shell">
+        <div class="detail-topbar">
+          <a class="ghost-button link-button back-button icon-back-button" href="#/garden" aria-label="Back to your garden">←</a>
+        </div>
         <section class="plant-hero">
           <div class="plant-hero-image">
             ${photoMarkup(plant.photo_url, `${plant.name} hero photo`, initialsFor(plant.name))}
@@ -89,16 +93,6 @@ export function renderDetail({
             </div>
             ${plant.chinese_name ? `<p class="detail-secondary-name">${escapeHtml(plant.chinese_name)}</p>` : ""}
             <p class="detail-meta">${escapeHtml(plant.species)} · ${escapeHtml(plant.location || "Home")}</p>
-            ${
-              tip
-                ? `
-                  <div class="context-block">
-                    <p class="history-panel-label">${escapeHtml(tip.title)}</p>
-                    <p class="support-copy">${escapeHtml(tip.body)}</p>
-                  </div>
-                `
-                : ""
-            }
           </div>
         </section>
 
@@ -128,6 +122,68 @@ export function renderDetail({
                   <p class="status-copy">Once you upload a photo and add a note, your next step will show up here.</p>
                 `
             }
+            ${
+              latest
+                ? `
+                  <a
+                    class="ghost-button link-button latest-followup-button"
+                    href="#/plant/${encodeURIComponent(plant.id)}/chat?checkin_id=${encodeURIComponent(latest.id)}"
+                  >Ask follow-up</a>
+                `
+                : ""
+            }
+          </article>
+          <article class="info-card watering-card">
+            <div class="watering-head">
+              <div>
+                <p class="eyebrow">Watering</p>
+                <h3>${
+                  plant.watered_today
+                    ? "Watered today"
+                    : lastWateredLabel
+                      ? `Last watered ${escapeHtml(lastWateredLabel)}`
+                      : "Not watered yet"
+                }</h3>
+              </div>
+              <button
+                id="toggle-today-watering"
+                class="watering-button ${plant.watered_today ? "is-active" : ""}"
+                type="button"
+                aria-label="${plant.watered_today ? "Remove today's watering" : "Log today's watering"}"
+                aria-pressed="${plant.watered_today ? "true" : "false"}"
+                title="${plant.watered_today ? "Remove today's watering" : "Log today's watering"}"
+              ><span aria-hidden="true">💧</span></button>
+            </div>
+            <div class="watering-calendar">
+              <div class="watering-calendar-head">
+                <p class="watering-calendar-label">${escapeHtml(wateringCalendar.monthLabel)}</p>
+              </div>
+              <div class="watering-weekdays" aria-hidden="true">
+                ${wateringCalendar.weekdays.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
+              </div>
+              <div class="watering-grid">
+                ${wateringCalendar.cells.map((cell) => {
+                  if (!cell.inMonth) {
+                    return `<div class="watering-day watering-day-empty" aria-hidden="true"></div>`;
+                  }
+                  const classes = [
+                    "watering-day",
+                    cell.watered ? "is-watered" : "",
+                    cell.isToday ? "is-today" : "",
+                  ].filter(Boolean).join(" ");
+                  return `
+                    <div
+                      class="${classes}"
+                      title="${escapeHtml(cell.key)}"
+                      aria-label="${escapeHtml(cell.key)}${cell.watered ? ", watered" : ""}${cell.isToday ? ", today" : ""}"
+                    >
+                      <span class="watering-day-number">${escapeHtml(cell.label)}</span>
+                      ${cell.watered ? `<span class="watering-drop" aria-hidden="true">💧</span>` : ""}
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+            </div>
           </article>
         </section>
 
@@ -179,6 +235,7 @@ export function renderDetail({
   }
 
   document.getElementById("delete-plant")?.addEventListener("click", actions.onDeletePlant);
+  document.getElementById("toggle-today-watering")?.addEventListener("click", actions.onToggleTodayWatering);
   detailViewEl.querySelectorAll("[data-delete-checkin]").forEach((button) => {
     button.addEventListener("click", () => {
       const checkinId = button.getAttribute("data-delete-checkin");
@@ -212,11 +269,10 @@ export function renderCheckinView({
 
   detailViewEl.innerHTML = `
     <div class="detail-stack">
-      <div class="detail-topbar">
-        <a class="ghost-button link-button back-button icon-back-button" href="#/plant/${encodeURIComponent(plant.id)}" aria-label="Back to plant detail">←</a>
-      </div>
-
       <div class="detail-shell">
+        <div class="detail-topbar">
+          <a class="ghost-button link-button back-button icon-back-button" href="#/plant/${encodeURIComponent(plant.id)}" aria-label="Back to plant detail">←</a>
+        </div>
         <section class="checkin-card">
           <div class="section-heading">
             <div>

@@ -7,20 +7,25 @@ import {
   todayInputValue,
 } from "/static/js/helpers.js";
 import {
+  createPlantChatMessageRequest,
   createSessionRequest,
   createCheckinRequest,
   createPlantRequest,
   deleteCheckinRequest,
   deletePlantRequest,
+  deleteWateringRequest,
   fetchPlantDetail,
+  fetchPlantChat,
   fetchPlants,
   fetchSession,
   patchPlant,
+  createWateringRequest,
   requestPlantIdentityPreview,
   setApiUserId,
 } from "/static/js/api.js";
 import {
   createInitialState,
+  resetChatState,
   resetSessionState,
   resetDetailEditorState,
   resetIntakeSuggestion,
@@ -30,6 +35,7 @@ import {
 import { routeFromHash, setRoute } from "/static/js/router.js";
 import { renderAddView } from "/static/js/views/add-view.js";
 import { renderGarden } from "/static/js/views/garden-view.js";
+import { renderChatView } from "/static/js/views/chat-view.js";
 import {
   renderCheckinView,
   renderDetail,
@@ -52,6 +58,7 @@ const elements = {
   gardenViewEl: document.getElementById("garden-view"),
   addViewEl: document.getElementById("add-view"),
   detailViewEl: document.getElementById("detail-view"),
+  chatViewEl: document.getElementById("chat-view"),
   addPlantForm: document.getElementById("add-plant-form"),
   toastEl: document.getElementById("toast"),
   tabBarEl: document.querySelector(".tab-bar"),
@@ -71,6 +78,9 @@ const elements = {
   suggestedDiagnosisStatusEl: document.getElementById("suggested-diagnosis-status"),
   suggestedDiagnosisTitleEl: document.getElementById("suggested-diagnosis-title"),
   suggestedDiagnosisSummaryEl: document.getElementById("suggested-diagnosis-summary"),
+  suggestedTipEl: document.getElementById("suggested-tip"),
+  suggestedTipTitleEl: document.getElementById("suggested-tip-title"),
+  suggestedTipBodyEl: document.getElementById("suggested-tip-body"),
   plantNameInput: document.getElementById("plant-name"),
   editPlantNameButton: document.getElementById("edit-plant-name"),
   identifyPlantButton: document.getElementById("identify-plant"),
@@ -237,7 +247,7 @@ function setActiveTab() {
     return;
   }
   elements.tabBarEl.hidden = false;
-  const activeRoute = state.route.name === "detail" || state.route.name === "checkin"
+  const activeRoute = state.route.name === "detail" || state.route.name === "checkin" || state.route.name === "chat"
     ? "garden"
     : state.route.name;
   elements.tabButtons.forEach((button) => {
@@ -252,6 +262,7 @@ function showView(name) {
   elements.gardenViewEl.hidden = name !== "garden";
   elements.addViewEl.hidden = name !== "add";
   elements.detailViewEl.hidden = name !== "detail";
+  elements.chatViewEl.hidden = name !== "chat";
 }
 
 function renderSessionBar() {
@@ -330,6 +341,15 @@ async function loadPlants() {
 
 async function loadPlantDetail(plantId) {
   state.selectedPlant = await fetchPlantDetail(plantId);
+}
+
+async function loadPlantChat(plantId, checkinId = "") {
+  const data = await fetchPlantChat(plantId, checkinId);
+  state.selectedPlant = data.plant;
+  state.chatThread = data.thread;
+  state.chatMessages = data.messages || [];
+  state.chatFocusedCheckin = data.focused_checkin || null;
+  state.chatSuggestedPrompts = data.suggested_prompts || [];
 }
 
 async function refreshSessionState() {
@@ -479,6 +499,27 @@ async function handleDeleteCheckin(checkinId) {
   }
 }
 
+async function handleToggleTodayWatering() {
+  if (!state.selectedPlant) {
+    return;
+  }
+
+  const plantId = state.selectedPlant.id;
+  const alreadyWatered = Boolean(state.selectedPlant.watered_today);
+
+  try {
+    const data = alreadyWatered
+      ? await deleteWateringRequest(plantId)
+      : await createWateringRequest(plantId);
+    state.selectedPlant = data.plant || state.selectedPlant;
+    await loadPlants();
+    renderCurrentView();
+    showToast(alreadyWatered ? "Watering removed" : "Watering saved");
+  } catch (error) {
+    showToast(error.message || "Could not update watering");
+  }
+}
+
 async function fetchIntakeSuggestion(signature) {
   const file = elements.intakePhotoInput?.files?.[0];
   if (!file) {
@@ -567,6 +608,22 @@ function renderCurrentView() {
     return;
   }
 
+  if (state.route.name === "chat") {
+    showView("chat");
+    renderChatView({
+      state,
+      chatViewEl: elements.chatViewEl,
+      actions: {
+        onChatDraftInput: (value) => {
+          state.chatDraft = value;
+        },
+        onChatSubmit: handleChatSubmit,
+        onSendChatPrompt: handleSendChatPrompt,
+      },
+    });
+    return;
+  }
+
   showView("detail");
   if (state.route.name === "checkin") {
     renderCheckinView({
@@ -592,6 +649,7 @@ function renderCurrentView() {
       },
       onSaveDetailName: saveDetailName,
       onCancelEditName: handleCancelEditDetailName,
+      onToggleTodayWatering: handleToggleTodayWatering,
       onDeletePlant: handleDeletePlant,
       onDeleteCheckin: handleDeleteCheckin,
     },
@@ -608,6 +666,7 @@ async function syncRoute() {
   await loadPlants();
 
   if (route.name === "detail" || route.name === "checkin") {
+    resetChatState(state);
     const exists = state.plants.some((plant) => plant.id === route.plantId);
     if (!exists) {
       state.selectedPlant = null;
@@ -616,8 +675,19 @@ async function syncRoute() {
       return;
     }
     await loadPlantDetail(route.plantId);
+  } else if (route.name === "chat") {
+    const exists = state.plants.some((plant) => plant.id === route.plantId);
+    if (!exists) {
+      state.selectedPlant = null;
+      resetChatState(state);
+      showToast("That plant could not be found");
+      setRoute("/garden", syncRoute);
+      return;
+    }
+    await loadPlantChat(route.plantId, route.checkinId || "");
   } else {
     state.selectedPlant = null;
+    resetChatState(state);
   }
 
   renderCurrentView();
@@ -732,6 +802,54 @@ async function handleCheckinSubmit(event) {
     submitButton.disabled = false;
     submitButton.textContent = "Diagnose and save";
   }
+}
+
+async function sendChatMessage(body) {
+  const route = state.route;
+  if (route.name !== "chat" || !route.plantId || !state.selectedPlant || state.chatSending) {
+    return;
+  }
+
+  const trimmedBody = String(body || "").trim();
+  if (!trimmedBody) {
+    showToast("Add a follow-up question first");
+    return;
+  }
+
+  state.chatSending = true;
+  renderCurrentView();
+
+  try {
+    const data = await createPlantChatMessageRequest(route.plantId, {
+      body: trimmedBody,
+      checkin_id: state.chatFocusedCheckin?.id || route.checkinId || undefined,
+    });
+    state.chatThread = data.thread || state.chatThread;
+    state.chatFocusedCheckin = data.focused_checkin || state.chatFocusedCheckin;
+    state.chatMessages = [
+      ...(state.chatMessages || []),
+      data.user_message,
+      data.assistant_message,
+    ].filter(Boolean);
+    state.chatDraft = "";
+    renderCurrentView();
+  } catch (error) {
+    showToast(error.message || "Could not send follow-up");
+  } finally {
+    state.chatSending = false;
+    renderCurrentView();
+  }
+}
+
+async function handleChatSubmit(event) {
+  event.preventDefault();
+  await sendChatMessage(state.chatDraft);
+}
+
+async function handleSendChatPrompt(prompt) {
+  state.chatDraft = String(prompt || "").trim();
+  renderCurrentView();
+  await sendChatMessage(state.chatDraft);
 }
 
 async function handleAuthSubmit(event) {

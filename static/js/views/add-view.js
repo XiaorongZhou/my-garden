@@ -31,6 +31,9 @@ export function renderAddView({
     suggestedDiagnosisStatusEl,
     suggestedDiagnosisTitleEl,
     suggestedDiagnosisSummaryEl,
+    suggestedTipEl,
+    suggestedTipTitleEl,
+    suggestedTipBodyEl,
     plantNameInput,
     identifyPlantButton,
   } = elements;
@@ -59,6 +62,9 @@ export function renderAddView({
   const diagnosis = state.intakeSuggestionLoading || state.intakeSuggestionSignature !== currentSignature
     ? null
     : state.intakeDiagnosis;
+  const tip = state.intakeSuggestionLoading || state.intakeSuggestionSignature !== currentSignature
+    ? null
+    : state.intakeTip;
 
   const displayName = state.intakePlantNameTouched && state.intakePlantName.trim()
     ? state.intakePlantName.trim()
@@ -79,6 +85,15 @@ export function renderAddView({
     suggestedDiagnosisStatusEl.textContent = statusLabel(diagnosis.health_status);
     suggestedDiagnosisTitleEl.textContent = diagnosis.diagnosis_title;
     suggestedDiagnosisSummaryEl.textContent = diagnosis.diagnosis_summary || "Initial read saved and ready to use when you save this plant.";
+  }
+  if (suggestedTipEl) {
+    suggestedTipEl.hidden = !tip;
+  }
+  if (suggestedTipTitleEl) {
+    suggestedTipTitleEl.textContent = tip?.title || "Care tip";
+  }
+  if (suggestedTipBodyEl) {
+    suggestedTipBodyEl.textContent = tip?.body || "";
   }
   syncIntakePlantNameFromSuggestion(suggestion);
   if (plantNameInput) {

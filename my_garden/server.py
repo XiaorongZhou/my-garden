@@ -5,31 +5,41 @@ import re
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .config import STATIC_DIR, UPLOAD_DIR
 from .data import (
     create_or_claim_user,
+    create_chat_message,
     create_checkin,
     create_plant,
+    create_watering_event,
     ensure_demo_seeded,
     fetch_checkin_row,
+    fetch_chat_thread_for_plant,
+    fetch_or_create_chat_thread,
     fetch_plant_row,
     fetch_user_by_id,
+    fetch_watering_row,
     get_conn,
     has_claimable_user,
     init_db,
     latest_checkin_row,
+    list_chat_message_rows,
     list_checkin_rows,
     list_plant_rows_for_user,
     make_plant_id,
     migrate_plant_ids_to_uuid,
     normalize_legacy_checkins,
     now_iso,
+    serialize_chat_message,
+    serialize_chat_thread,
     serialize_checkin,
     serialize_plant_detail,
     serialize_plant_summary,
     serialize_user,
+    today_date_iso,
+    update_chat_thread_memory,
 )
 from .errors import ApiError
 from .http_utils import (
@@ -45,9 +55,11 @@ from .http_utils import (
     upload_token_from_url,
 )
 from .plant_ai import (
+    answer_plant_followup,
     build_add_preview,
     default_tip_for_identity,
     diagnose_plant,
+    followup_prompt_suggestions,
     heuristic_diagnosis,
     heuristic_chinese_name,
     infer_plant_identity,
@@ -137,6 +149,48 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     user = self._resolve_current_user(connection)
                     rows = list_plant_rows_for_user(connection, str(user["id"]))
                     payload = {"plants": [serialize_plant_summary(connection, row) for row in rows]}
+                return self._send_json(payload)
+
+            chat_match = re.fullmatch(r"/api/plants/([^/]+)/chat", path)
+            if chat_match:
+                plant_id = chat_match.group(1)
+                requested_checkin_id = parse_qs(parsed.query).get("checkin_id", [None])[0]
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    row = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    thread = fetch_or_create_chat_thread(
+                        connection,
+                        plant_id=plant_id,
+                        user_id=str(user["id"]),
+                    )
+                    latest = latest_checkin_row(connection, plant_id)
+                    focused_checkin = None
+                    if requested_checkin_id:
+                        focused_row = fetch_checkin_row(
+                            connection,
+                            str(requested_checkin_id),
+                            user_id=str(user["id"]),
+                        )
+                        if str(focused_row["plant_id"]) != plant_id:
+                            raise ApiError(HTTPStatus.BAD_REQUEST, "That diagnosis belongs to a different plant.")
+                        focused_checkin = serialize_checkin(focused_row)
+                    payload = {
+                        "plant": {
+                            **serialize_plant_summary(connection, row),
+                            "latest_checkin": serialize_checkin(latest) if latest else None,
+                        },
+                        "thread": serialize_chat_thread(thread),
+                        "messages": [
+                            serialize_chat_message(message_row)
+                            for message_row in list_chat_message_rows(connection, str(thread["id"]))
+                        ],
+                        "focused_checkin": focused_checkin,
+                        "suggested_prompts": followup_prompt_suggestions(
+                            plant=row,
+                            latest_checkin=serialize_checkin(latest) if latest else None,
+                        ),
+                    }
+                    connection.commit()
                 return self._send_json(payload)
 
             plant_match = re.fullmatch(r"/api/plants/([^/]+)", path)
@@ -351,10 +405,15 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 with get_conn() as connection:
                     user = self._resolve_current_user(connection)
                     plant = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    recent_checkins = [
+                        serialize_checkin(checkin_row)
+                        for checkin_row in list_checkin_rows(connection, plant_id)[:3]
+                    ]
                     diagnosis = diagnose_plant(
                         plant=plant,
                         note=note,
                         has_photo=photo_url is not None,
+                        recent_checkins=recent_checkins,
                         filename=str(file_payload.get("filename") or "") if file_payload else "",
                         content_type=str(file_payload.get("content_type") or "") if file_payload else "",
                         photo_bytes=bytes(file_payload.get("bytes") or b"") if file_payload else None,
@@ -387,6 +446,145 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     connection.commit()
                 return self._send_json(payload_out, status=201)
 
+            chat_message_match = re.fullmatch(r"/api/plants/([^/]+)/chat/messages", path)
+            if chat_message_match:
+                plant_id = chat_message_match.group(1)
+                payload = parse_json_body(self)
+                if not isinstance(payload, dict):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Chat message payload must be a JSON object.")
+                body = str(payload.get("body") or "").strip()
+                checkin_id = str(payload.get("checkin_id") or "").strip() or None
+                if not body:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Add a follow-up question first.")
+
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    plant = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    thread = fetch_or_create_chat_thread(
+                        connection,
+                        plant_id=plant_id,
+                        user_id=str(user["id"]),
+                    )
+                    recent_checkins = [
+                        serialize_checkin(checkin_row)
+                        for checkin_row in list_checkin_rows(connection, plant_id)[:3]
+                    ]
+                    recent_messages = [
+                        serialize_chat_message(message_row)
+                        for message_row in list_chat_message_rows(connection, str(thread["id"]), limit=6)
+                    ]
+                    focused_checkin = None
+                    if checkin_id:
+                        focused_row = fetch_checkin_row(connection, checkin_id, user_id=str(user["id"]))
+                        if str(focused_row["plant_id"]) != plant_id:
+                            raise ApiError(HTTPStatus.BAD_REQUEST, "That diagnosis belongs to a different plant.")
+                        focused_checkin = serialize_checkin(focused_row)
+
+                    answer_payload = answer_plant_followup(
+                        plant=plant,
+                        question=body,
+                        recent_checkins=recent_checkins,
+                        recent_messages=recent_messages,
+                        rolling_summary=str(thread["rolling_summary"] or "").strip(),
+                        focused_checkin=focused_checkin,
+                    )
+                    created_at = now_iso()
+                    user_message_id = str(uuid.uuid4())
+                    assistant_message_id = str(uuid.uuid4())
+                    create_chat_message(
+                        connection,
+                        message_id=user_message_id,
+                        thread_id=str(thread["id"]),
+                        user_id=str(user["id"]),
+                        plant_id=plant_id,
+                        checkin_id=checkin_id,
+                        role="user",
+                        body=body,
+                        suggested_actions=[],
+                        watch_signals=[],
+                        created_at=created_at,
+                    )
+                    create_chat_message(
+                        connection,
+                        message_id=assistant_message_id,
+                        thread_id=str(thread["id"]),
+                        user_id=str(user["id"]),
+                        plant_id=plant_id,
+                        checkin_id=checkin_id,
+                        role="assistant",
+                        body=str(answer_payload["answer"]),
+                        suggested_actions=list(answer_payload.get("suggested_actions") or []),
+                        watch_signals=list(answer_payload.get("watch_signals") or []),
+                        created_at=created_at,
+                    )
+                    update_chat_thread_memory(
+                        connection,
+                        thread_id=str(thread["id"]),
+                        rolling_summary=str(answer_payload.get("rolling_summary") or ""),
+                        open_questions=list(answer_payload.get("open_questions") or []),
+                        last_advice=list(answer_payload.get("last_advice") or []),
+                        updated_at=created_at,
+                    )
+                    refreshed_thread = fetch_chat_thread_for_plant(
+                        connection,
+                        plant_id=plant_id,
+                        user_id=str(user["id"]),
+                    )
+                    payload_out = {
+                        "thread": serialize_chat_thread(refreshed_thread),
+                        "user_message": serialize_chat_message(
+                            connection.execute(
+                                "SELECT * FROM chat_messages WHERE id = ?",
+                                (user_message_id,),
+                            ).fetchone()
+                        ),
+                        "assistant_message": serialize_chat_message(
+                            connection.execute(
+                                "SELECT * FROM chat_messages WHERE id = ?",
+                                (assistant_message_id,),
+                            ).fetchone()
+                        ),
+                        "focused_checkin": focused_checkin,
+                    }
+                    connection.commit()
+                return self._send_json(payload_out, status=201)
+
+            watering_match = re.fullmatch(r"/api/plants/([^/]+)/waterings", path)
+            if watering_match:
+                plant_id = watering_match.group(1)
+                payload = parse_json_body(self)
+                if payload is None:
+                    payload = {}
+                if not isinstance(payload, dict):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Watering payload must be a JSON object.")
+                watered_on = str(payload.get("watered_on") or "").strip() or today_date_iso()
+
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", watered_on):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Watering date must use YYYY-MM-DD.")
+
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    existing = fetch_watering_row(connection, plant_id=plant_id, watered_on=watered_on)
+                    created = False
+                    if existing is None:
+                        create_watering_event(
+                            connection,
+                            watering_id=str(uuid.uuid4()),
+                            plant_id=plant_id,
+                            watered_on=watered_on,
+                            created_at=now_iso(),
+                        )
+                        created = True
+                    row = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    payload_out = {
+                        "created": created,
+                        "watered_on": watered_on,
+                        "plant": serialize_plant_detail(connection, row),
+                    }
+                    connection.commit()
+                return self._send_json(payload_out, status=201 if created else 200)
+
             raise ApiError(HTTPStatus.NOT_FOUND, "Not found.")
         except ApiError as exc:
             self._send_api_error(exc)
@@ -408,6 +606,10 @@ class MyGardenHandler(BaseHTTPRequestHandler):
 
                     connection.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
                     connection.execute(
+                        "UPDATE chat_messages SET checkin_id = NULL WHERE checkin_id = ?",
+                        (checkin_id,),
+                    )
+                    connection.execute(
                         "UPDATE plants SET updated_at = ? WHERE id = ?",
                         (now_iso(), plant_id),
                     )
@@ -421,6 +623,35 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 return self._send_json(
                     {"deleted": True, "checkin_id": checkin_id, "plant_id": plant_id}
                 )
+
+            watering_match = re.fullmatch(r"/api/plants/([^/]+)/waterings", path)
+            if watering_match:
+                plant_id = watering_match.group(1)
+                watered_on = parse_qs(parsed.query).get("date", [today_date_iso()])[0]
+                watered_on = str(watered_on or "").strip() or today_date_iso()
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", watered_on):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Watering date must use YYYY-MM-DD.")
+
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    existing = fetch_watering_row(connection, plant_id=plant_id, watered_on=watered_on)
+                    deleted = False
+                    if existing is not None:
+                        connection.execute("DELETE FROM waterings WHERE id = ?", (str(existing["id"]),))
+                        connection.execute(
+                            "UPDATE plants SET updated_at = ? WHERE id = ?",
+                            (now_iso(), plant_id),
+                        )
+                        deleted = True
+                    row = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    payload_out = {
+                        "deleted": deleted,
+                        "watered_on": watered_on,
+                        "plant": serialize_plant_detail(connection, row),
+                    }
+                    connection.commit()
+                return self._send_json(payload_out)
 
             plant_match = re.fullmatch(r"/api/plants/([^/]+)", path)
             if not plant_match:
@@ -487,6 +718,10 @@ class MyGardenHandler(BaseHTTPRequestHandler):
 
                     connection.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
                     connection.execute(
+                        "UPDATE chat_messages SET checkin_id = NULL WHERE checkin_id = ?",
+                        (checkin_id,),
+                    )
+                    connection.execute(
                         "UPDATE plants SET updated_at = ? WHERE id = ?",
                         (now_iso(), plant_id),
                     )
@@ -513,6 +748,9 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 upload_urls = [row["cover_photo_url"]]
                 upload_urls.extend(checkin_row["photo_url"] for checkin_row in checkin_rows)
 
+                connection.execute("DELETE FROM waterings WHERE plant_id = ?", (plant_id,))
+                connection.execute("DELETE FROM chat_messages WHERE plant_id = ?", (plant_id,))
+                connection.execute("DELETE FROM chat_threads WHERE plant_id = ?", (plant_id,))
                 connection.execute("DELETE FROM checkins WHERE plant_id = ?", (plant_id,))
                 connection.execute("DELETE FROM plants WHERE id = ?", (plant_id,))
                 connection.commit()

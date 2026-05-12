@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .config import STATIC_DIR, UPLOAD_DIR
 from .data import (
+    create_user_session,
     create_or_claim_user,
     create_chat_message,
     create_checkin,
@@ -19,7 +20,7 @@ from .data import (
     fetch_chat_thread_for_plant,
     fetch_or_create_chat_thread,
     fetch_plant_row,
-    fetch_user_by_id,
+    fetch_user_by_session_token,
     fetch_watering_row,
     get_conn,
     has_claimable_user,
@@ -54,6 +55,7 @@ from .http_utils import (
     store_upload,
     upload_token_from_url,
 )
+from .limits import consume_ai_quota
 from .plant_ai import (
     answer_plant_followup,
     build_add_preview,
@@ -90,27 +92,59 @@ class MyGardenHandler(BaseHTTPRequestHandler):
     def _send_api_error(self, exc: ApiError) -> None:
         self._send_json({"error": exc.message}, status=exc.status)
 
-    def _current_user_id(self) -> str:
-        return str(self.headers.get("X-My-Garden-User-Id") or "").strip()
+    def _current_session_token(self) -> str:
+        auth_header = str(self.headers.get("Authorization") or "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return auth_header[7:].strip()
+        return str(self.headers.get("X-My-Garden-Session") or "").strip()
 
     def _resolve_current_user(self, connection, *, required: bool = True):
-        user_id = self._current_user_id()
-        if not user_id:
+        token = self._current_session_token()
+        if not token:
             if required:
-                raise ApiError(401, "Choose your garden profile first.")
+                raise ApiError(401, "Sign in to open your garden.")
             return None
-        try:
-            return fetch_user_by_id(connection, user_id)
-        except ApiError:
-            if required:
-                raise
-            return None
+        user = fetch_user_by_session_token(connection, token)
+        if user is None and required:
+            raise ApiError(401, "Your session expired. Please sign in again.")
+        return user
 
-    def _session_payload(self, connection, user_row=None, *, claimed_legacy_garden: bool = False):
+    def _consume_ai_quota(self, user_id: str, action: str) -> None:
+        with get_conn() as connection:
+            consume_ai_quota(connection, user_id=user_id, action=action)
+            connection.commit()
+
+    def _identity_from_provided_values(
+        self,
+        *,
+        name: str,
+        species: str,
+        chinese_name: str,
+    ) -> dict[str, str]:
+        return {
+            "name": name,
+            "species": species,
+            "chinese_name": chinese_name,
+            "confidence": "user",
+            "source": "provided",
+            "caption": "Using the plant details saved from your identification step.",
+        }
+
+    def _session_payload(
+        self,
+        connection,
+        user_row=None,
+        *,
+        claimed_legacy_garden: bool = False,
+        session_token: str = "",
+        password_was_set: bool = False,
+    ):
         return {
             "user": serialize_user(user_row) if user_row is not None else None,
+            "session_token": session_token,
             "claimable_legacy_garden": has_claimable_user(connection),
             "claimed_legacy_garden": claimed_legacy_garden,
+            "password_was_set": password_was_set,
         }
 
     def do_GET(self) -> None:
@@ -217,16 +251,21 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     raise ApiError(HTTPStatus.BAD_REQUEST, "Session payload must be a JSON object.")
                 name = str(payload.get("name") or "").strip()
                 email = str(payload.get("email") or "").strip()
+                password = str(payload.get("password") or "")
                 with get_conn() as connection:
-                    user, claimed_legacy_garden = create_or_claim_user(
+                    user, claimed_legacy_garden, password_was_set = create_or_claim_user(
                         connection,
                         name=name,
                         email=email,
+                        password=password,
                     )
+                    session_token = create_user_session(connection, user_id=str(user["id"]))
                     payload_out = self._session_payload(
                         connection,
                         user,
                         claimed_legacy_garden=claimed_legacy_garden,
+                        session_token=session_token,
+                        password_was_set=password_was_set,
                     )
                     connection.commit()
                 return self._send_json(payload_out, status=201)
@@ -236,6 +275,10 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 file_payload = pick_file(files)
                 if not file_payload:
                     raise ApiError(HTTPStatus.BAD_REQUEST, "Add a plant photo first.")
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    consume_ai_quota(connection, user_id=str(user["id"]), action="identity")
+                    connection.commit()
                 note = str(fields.get("notes") or fields.get("note") or "").strip()
                 preview_photo_url = store_upload(file_payload, prefix="preview")
                 preview = build_add_preview(
@@ -252,15 +295,29 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 )
 
             if path == "/api/plants":
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    user_id = str(user["id"])
                 content_type = self.headers.get("Content-Type", "")
 
                 if "application/json" in content_type:
                     payload = parse_json_body(self)
                     notes = str(payload.get("notes") or "").strip()
-                    suggestion = infer_plant_identity(note=notes, filename="")
-                    name = str(payload.get("name") or "").strip() or suggestion["name"]
-                    species = str(payload.get("species") or "").strip() or suggestion["species"]
-                    chinese_name = str(payload.get("chinese_name") or "").strip() or str(suggestion.get("chinese_name") or "")
+                    name = str(payload.get("name") or "").strip()
+                    species = str(payload.get("species") or "").strip()
+                    chinese_name = str(payload.get("chinese_name") or "").strip()
+                    if not name or not species:
+                        self._consume_ai_quota(user_id, "identity")
+                        suggestion = infer_plant_identity(note=notes, filename="")
+                        name = name or suggestion["name"]
+                        species = species or suggestion["species"]
+                        chinese_name = chinese_name or str(suggestion.get("chinese_name") or "")
+                    else:
+                        suggestion = self._identity_from_provided_values(
+                            name=name,
+                            species=species,
+                            chinese_name=chinese_name,
+                        )
                     location = str(payload.get("location") or "").strip() or "Home"
                     photo_url = None
                     initial_note = notes
@@ -278,15 +335,26 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     notes = str(fields.get("notes") or fields.get("note") or "").strip()
                     initial_note = notes
                     location = str(fields.get("location") or "").strip() or "Home"
-                    suggestion = infer_plant_identity(
-                        note=notes,
-                        filename=str(file_payload.get("filename") or "") if file_payload else "",
-                        content_type=str(file_payload.get("content_type") or "") if file_payload else "",
-                        photo_bytes=bytes(file_payload.get("bytes") or b"") if file_payload else None,
-                    )
-                    name = str(fields.get("name") or "").strip() or suggestion["name"]
-                    species = str(fields.get("species") or "").strip() or suggestion["species"]
-                    chinese_name = str(fields.get("chinese_name") or "").strip() or str(suggestion.get("chinese_name") or "")
+                    name = str(fields.get("name") or "").strip()
+                    species = str(fields.get("species") or "").strip()
+                    chinese_name = str(fields.get("chinese_name") or "").strip()
+                    if not name or not species:
+                        self._consume_ai_quota(user_id, "identity")
+                        suggestion = infer_plant_identity(
+                            note=notes,
+                            filename=str(file_payload.get("filename") or "") if file_payload else "",
+                            content_type=str(file_payload.get("content_type") or "") if file_payload else "",
+                            photo_bytes=bytes(file_payload.get("bytes") or b"") if file_payload else None,
+                        )
+                        name = name or suggestion["name"]
+                        species = species or suggestion["species"]
+                        chinese_name = chinese_name or str(suggestion.get("chinese_name") or "")
+                    else:
+                        suggestion = self._identity_from_provided_values(
+                            name=name,
+                            species=species,
+                            chinese_name=chinese_name,
+                        )
                     raw_diagnosis = fields.get("diagnosis_payload") or ""
                     raw_tip = fields.get("tip_payload") or ""
 
@@ -333,13 +401,12 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     chinese_name = heuristic_chinese_name(name=name, species=species)
 
                 with get_conn() as connection:
-                    user = self._resolve_current_user(connection)
                     plant_id = make_plant_id(connection)
                     created_at = now_iso()
                     create_plant(
                         connection,
                         plant_id=plant_id,
-                        user_id=str(user["id"]),
+                        user_id=user_id,
                         name=name,
                         species=species,
                         chinese_name=chinese_name,
@@ -354,7 +421,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     )
                     created_checkin = None
                     if photo_url or initial_note:
-                        plant_row = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                        plant_row = fetch_plant_row(connection, plant_id, user_id=user_id)
                         diagnosis = provided_diagnosis or heuristic_diagnosis(
                             plant_row,
                             initial_note,
@@ -374,7 +441,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                             created_at=created_at,
                         )
                         created_checkin = latest_checkin_row(connection, plant_id)
-                    row = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    row = fetch_plant_row(connection, plant_id, user_id=user_id)
                     payload_out = {
                         "plant": serialize_plant_detail(connection, row),
                         "checkin": serialize_checkin(created_checkin) if created_checkin else None,
@@ -405,6 +472,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 with get_conn() as connection:
                     user = self._resolve_current_user(connection)
                     plant = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    consume_ai_quota(connection, user_id=str(user["id"]), action="checkin")
                     recent_checkins = [
                         serialize_checkin(checkin_row)
                         for checkin_row in list_checkin_rows(connection, plant_id)[:3]
@@ -460,6 +528,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 with get_conn() as connection:
                     user = self._resolve_current_user(connection)
                     plant = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    consume_ai_quota(connection, user_id=str(user["id"]), action="chat")
                     thread = fetch_or_create_chat_thread(
                         connection,
                         plant_id=plant_id,

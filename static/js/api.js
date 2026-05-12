@@ -11,20 +11,20 @@ async function parseJson(response, fallbackMessage) {
   return data;
 }
 
-let currentUserId = "";
+let currentSessionToken = "";
 
 function authHeaders(extraHeaders = {}) {
-  if (!currentUserId) {
+  if (!currentSessionToken) {
     return extraHeaders;
   }
   return {
     ...extraHeaders,
-    "X-My-Garden-User-Id": currentUserId,
+    Authorization: `Bearer ${currentSessionToken}`,
   };
 }
 
-export function setApiUserId(userId) {
-  currentUserId = String(userId || "").trim();
+export function setApiSessionToken(sessionToken) {
+  currentSessionToken = String(sessionToken || "").trim();
 }
 
 export async function fetchSession() {

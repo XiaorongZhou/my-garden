@@ -21,7 +21,7 @@ import {
   patchPlant,
   createWateringRequest,
   requestPlantIdentityPreview,
-  setApiUserId,
+  setApiSessionToken,
 } from "/static/js/api.js";
 import {
   createInitialState,
@@ -50,6 +50,7 @@ const elements = {
   authNameFieldEl: document.getElementById("auth-name-field"),
   authNameInput: document.getElementById("auth-name"),
   authEmailInput: document.getElementById("auth-email"),
+  authPasswordInput: document.getElementById("auth-password"),
   authSubmitButton: document.getElementById("auth-submit"),
   sessionBarEl: document.getElementById("session-bar"),
   sessionUserNameEl: document.getElementById("session-user-name"),
@@ -87,7 +88,7 @@ const elements = {
 };
 
 const state = createInitialState();
-const SESSION_STORAGE_KEY = "my-garden-user-id";
+const SESSION_STORAGE_KEY = "my-garden-session-token";
 const REMEMBERED_USER_STORAGE_KEY = "my-garden-remembered-user";
 
 async function registerServiceWorker() {
@@ -112,9 +113,9 @@ function showToast(message) {
   }, 1800);
 }
 
-function storeSessionUserId(userId) {
-  if (userId) {
-    window.localStorage.setItem(SESSION_STORAGE_KEY, userId);
+function storeSessionToken(sessionToken) {
+  if (sessionToken) {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, sessionToken);
   } else {
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
   }
@@ -138,7 +139,7 @@ function storeRememberedUser(user) {
   state.rememberedUser = null;
 }
 
-function readStoredSessionUserId() {
+function readStoredSessionToken() {
   return String(window.localStorage.getItem(SESSION_STORAGE_KEY) || "").trim();
 }
 
@@ -158,11 +159,16 @@ function readRememberedUser() {
   }
 }
 
-function setCurrentUser(user) {
+function setCurrentUser(user, sessionToken = "") {
   state.currentUser = user || null;
-  const userId = String(user?.id || "").trim();
-  setApiUserId(userId);
-  storeSessionUserId(userId);
+  const nextSessionToken = String(sessionToken || "").trim();
+  if (nextSessionToken) {
+    setApiSessionToken(nextSessionToken);
+    storeSessionToken(nextSessionToken);
+  } else if (!user) {
+    setApiSessionToken("");
+    storeSessionToken("");
+  }
   if (user) {
     storeRememberedUser(user);
   }
@@ -266,20 +272,19 @@ function showView(name) {
 }
 
 function renderSessionBar() {
-  const activeUser = state.currentUser || state.rememberedUser;
-  const isResumeState = !state.currentUser && !!state.rememberedUser;
+  const activeUser = state.currentUser;
   elements.sessionBarEl.hidden = !activeUser;
   if (!activeUser) {
     return;
   }
   const eyebrow = elements.sessionBarEl.querySelector(".eyebrow");
   if (eyebrow) {
-    eyebrow.textContent = isResumeState ? "Current garden" : "Current garden";
+    eyebrow.textContent = "Current garden";
   }
   elements.sessionUserNameEl.textContent = `${activeUser.name}'s garden`;
   elements.sessionUserEmailEl.textContent = activeUser.email || "";
-  elements.switchProfileButton.textContent = isResumeState ? "Continue" : "Switch";
-  elements.switchProfileButton.dataset.mode = isResumeState ? "resume" : "switch";
+  elements.switchProfileButton.textContent = "Switch";
+  elements.switchProfileButton.dataset.mode = "switch";
 }
 
 function renderAuthView() {
@@ -288,9 +293,9 @@ function renderAuthView() {
     : "Open your garden";
   const copy = state.authNeedsName
     ? (state.sessionClaimable
-      ? "This email is new here, so add your name once to claim the shared garden."
+      ? "This email is new here, so add your name once to claim the shared garden. Your password will protect it going forward."
       : "This email is new here, so add your name once to create a new garden.")
-    : "Start with your email. If this is a new garden, we’ll ask for your name next.";
+    : "Sign in with your email and garden password. If this is a new garden, we’ll ask for your name next.";
   const remembered = state.rememberedUser;
 
   elements.authTitleEl.textContent = title;
@@ -332,6 +337,7 @@ function handleCancelEditDetailName() {
 
 function handleOpenPlant(plantId) {
   clearDetailPreview();
+  state.detailWateringMonthOffset = 0;
   setRoute(`/plant/${encodeURIComponent(plantId)}`, syncRoute);
 }
 
@@ -366,11 +372,11 @@ async function refreshSessionState() {
 
 async function bootstrapSession() {
   state.rememberedUser = readRememberedUser();
-  setApiUserId(readStoredSessionUserId());
+  setApiSessionToken(readStoredSessionToken());
   try {
     return await refreshSessionState();
   } catch (error) {
-    setCurrentUser(null);
+    state.currentUser = null;
     throw error;
   }
 }
@@ -433,26 +439,40 @@ async function handleResumeRememberedGarden() {
   if (!remembered?.id) {
     return;
   }
-  state.authSubmitting = true;
-  renderCurrentView();
-  try {
-    setApiUserId(remembered.id);
-    storeSessionUserId(remembered.id);
-    await refreshSessionState();
-    await loadPlants();
-    state.selectedPlant = null;
-    showToast(`Welcome back, ${state.currentUser?.name || "friend"}`);
-    setRoute("/garden", syncRoute);
-  } catch (error) {
-    storeSessionUserId("");
-    storeRememberedUser(null);
-    setApiUserId("");
-    showToast(error.message || "Could not open that garden");
+
+  const sessionToken = readStoredSessionToken();
+  if (sessionToken) {
+    state.authSubmitting = true;
+    setApiSessionToken(sessionToken);
     renderCurrentView();
-  } finally {
-    state.authSubmitting = false;
-    renderCurrentView();
+    try {
+      const user = await refreshSessionState();
+      if (user) {
+        await loadPlants();
+        state.selectedPlant = null;
+        resetPurchaseDateInput();
+        showToast("Garden opened");
+        setRoute("/garden", syncRoute);
+        return;
+      }
+      showToast("Session expired. Enter your password.");
+    } catch (_error) {
+      showToast("Could not reuse the saved session. Enter your password.");
+    } finally {
+      state.authSubmitting = false;
+      renderCurrentView();
+    }
   }
+
+  if (elements.authEmailInput) {
+    elements.authEmailInput.value = remembered.email;
+  }
+  if (elements.authPasswordInput) {
+    elements.authPasswordInput.value = "";
+  }
+  showToast("Enter your password to continue");
+  renderCurrentView();
+  queueMicrotask(() => elements.authPasswordInput?.focus());
 }
 
 async function handleDeletePlant() {
@@ -518,6 +538,16 @@ async function handleToggleTodayWatering() {
   } catch (error) {
     showToast(error.message || "Could not update watering");
   }
+}
+
+function handlePreviousWateringMonth() {
+  state.detailWateringMonthOffset -= 1;
+  renderCurrentView();
+}
+
+function handleNextWateringMonth() {
+  state.detailWateringMonthOffset += 1;
+  renderCurrentView();
 }
 
 async function fetchIntakeSuggestion(signature) {
@@ -650,6 +680,8 @@ function renderCurrentView() {
       onSaveDetailName: saveDetailName,
       onCancelEditName: handleCancelEditDetailName,
       onToggleTodayWatering: handleToggleTodayWatering,
+      onPreviousWateringMonth: handlePreviousWateringMonth,
+      onNextWateringMonth: handleNextWateringMonth,
       onDeletePlant: handleDeletePlant,
       onDeleteCheckin: handleDeleteCheckin,
     },
@@ -673,6 +705,9 @@ async function syncRoute() {
       showToast("That plant could not be found");
       setRoute("/garden", syncRoute);
       return;
+    }
+    if (state.selectedPlant?.id !== route.plantId) {
+      state.detailWateringMonthOffset = 0;
     }
     await loadPlantDetail(route.plantId);
   } else if (route.name === "chat") {
@@ -856,8 +891,13 @@ async function handleAuthSubmit(event) {
   event.preventDefault();
   const name = elements.authNameInput?.value?.trim() || "";
   const email = elements.authEmailInput?.value?.trim() || "";
+  const password = elements.authPasswordInput?.value || "";
   if (!email) {
     showToast("Add your email first");
+    return;
+  }
+  if (password.length < 8) {
+    showToast("Use at least 8 characters");
     return;
   }
   if (state.authNeedsName && !name) {
@@ -871,15 +911,19 @@ async function handleAuthSubmit(event) {
     const payload = await createSessionRequest({
       name: state.authNeedsName ? name : "",
       email,
+      password,
     });
-    setCurrentUser(payload.user || null);
+    setCurrentUser(payload.user || null, payload.session_token || "");
     state.sessionClaimable = Boolean(payload.claimable_legacy_garden);
     state.authNeedsName = false;
     await loadPlants();
     state.selectedPlant = null;
     resetPurchaseDateInput();
     renderCurrentView();
-    showToast(payload.claimed_legacy_garden ? "Garden claimed" : `Welcome, ${state.currentUser?.name || "friend"}`);
+    const welcomeMessage = payload.password_was_set
+      ? "Garden secured"
+      : `Welcome, ${state.currentUser?.name || "friend"}`;
+    showToast(payload.claimed_legacy_garden ? "Garden claimed" : welcomeMessage);
     setRoute("/garden", syncRoute);
   } catch (error) {
     if ((error.message || "").includes("Add your name to create a new garden.")) {

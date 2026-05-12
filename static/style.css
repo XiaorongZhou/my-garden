@@ -60,14 +60,14 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   margin-top: 18px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 252, 247, 0.8);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(14px);
+  border-radius: 18px;
+  background: rgba(255, 252, 247, 0.58);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
 }
 
 .session-copy {
@@ -75,15 +75,29 @@ button {
 }
 
 .session-copy .eyebrow {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  font-size: 0.68rem;
 }
 
 .session-copy h3 {
-  margin-bottom: 2px;
+  margin-bottom: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .session-bar .section-note {
-  font-size: 0.92rem;
+  display: none;
+}
+
+.session-bar .ghost-button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.82rem;
 }
 
 .hero,
@@ -509,7 +523,8 @@ input:focus::placeholder {
 }
 
 .watering-card {
-  gap: 14px;
+  display: grid;
+  gap: 16px;
 }
 
 .watering-head {
@@ -517,6 +532,7 @@ input:focus::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding-bottom: 4px;
 }
 
 .watering-head h3 {
@@ -566,7 +582,7 @@ input:focus::placeholder {
 .watering-calendar-head {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 10px;
 }
 
@@ -574,6 +590,20 @@ input:focus::placeholder {
   color: var(--text);
   font-size: 0.98rem;
   font-weight: 600;
+  text-align: center;
+}
+
+.watering-month-button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 107, 77, 0.14);
+  background: rgba(255, 252, 247, 0.9);
+  color: var(--leaf);
+  font-size: 1.3rem;
+  line-height: 1;
 }
 
 .watering-calendar-hint {
@@ -598,14 +628,15 @@ input:focus::placeholder {
 }
 
 .watering-day {
+  position: relative;
   min-height: 42px;
   border-radius: 14px;
   border: 1px solid rgba(73, 74, 53, 0.08);
   background: rgba(255, 252, 247, 0.92);
-  display: grid;
-  place-items: center;
-  gap: 1px;
-  padding: 4px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
 }
 
 .watering-day-empty {
@@ -629,7 +660,18 @@ input:focus::placeholder {
 }
 
 .watering-drop {
-  font-size: 0.76rem;
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.82);
+  box-shadow: 0 2px 6px rgba(47, 84, 58, 0.12);
+  font-size: 0.62rem;
   line-height: 1;
 }
 
@@ -1243,6 +1285,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .checkin-card .inline-cta {
+  margin-top: 0;
+}
+
+.checkin-shortcut {
+  padding: 2px 0 0;
+}
+
+.checkin-shortcut .inline-cta {
   margin-top: 0;
 }
 

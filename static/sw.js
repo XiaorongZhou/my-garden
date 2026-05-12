@@ -1,4 +1,4 @@
-const CACHE_NAME = "my-garden-v20";
+const CACHE_NAME = "my-garden-v27";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

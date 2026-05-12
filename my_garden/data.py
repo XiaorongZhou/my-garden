@@ -5,7 +5,14 @@ import sqlite3
 import uuid
 from datetime import datetime
 
-from .config import DB_PATH, DEMO_CAT_PALM_ID, DEMO_MAIDENHAIR_ID
+from .auth import (
+    hash_password,
+    new_session_token,
+    session_expires_at,
+    session_token_digest,
+    verify_password,
+)
+from .config import DB_PATH, DEMO_CAT_PALM_ID, DEMO_MAIDENHAIR_ID, SESSION_TTL_DAYS
 from .errors import ApiError
 from .plant_ai import default_tip_for_identity, heuristic_chinese_name
 
@@ -43,6 +50,7 @@ def init_db() -> None:
                 name TEXT NOT NULL,
                 email TEXT NOT NULL DEFAULT '',
                 normalized_email TEXT,
+                password_hash TEXT NOT NULL DEFAULT '',
                 is_claimable INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -51,6 +59,32 @@ def init_db() -> None:
         )
         connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_normalized_email ON users(normalized_email)"
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token_digest TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                user_id TEXT NOT NULL,
+                usage_date TEXT NOT NULL,
+                action TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, usage_date, action),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
         )
         connection.execute(
             """
@@ -140,6 +174,10 @@ def init_db() -> None:
             str(row["name"]): row
             for row in connection.execute("PRAGMA table_info(plants)").fetchall()
         }
+        user_columns = {
+            str(row["name"]): row
+            for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
         thread_columns = {
             str(row["name"]): row
             for row in connection.execute("PRAGMA table_info(chat_threads)").fetchall()
@@ -148,6 +186,10 @@ def init_db() -> None:
             str(row["name"]): row
             for row in connection.execute("PRAGMA table_info(chat_messages)").fetchall()
         }
+        if "password_hash" not in user_columns:
+            connection.execute(
+                "ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''"
+            )
         if "note_origin" not in columns:
             connection.execute(
                 "ALTER TABLE plants ADD COLUMN note_origin TEXT NOT NULL DEFAULT 'empty'"
@@ -192,6 +234,15 @@ def init_db() -> None:
             )
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_plants_user_id ON plants(user_id)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)"
+        )
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_sessions_token_digest ON user_sessions(token_digest)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage(user_id, usage_date)"
         )
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_checkins_plant_id ON checkins(plant_id)"
@@ -242,19 +293,21 @@ def create_user(
     normalized_email: str | None,
     is_claimable: bool,
     created_at: str,
+    password_hash: str = "",
 ) -> None:
     connection.execute(
         """
         INSERT INTO users (
-            id, name, email, normalized_email, is_claimable, created_at, updated_at
+            id, name, email, normalized_email, password_hash, is_claimable, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             user_id,
             name,
             email,
             normalized_email,
+            password_hash,
             1 if is_claimable else 0,
             created_at,
             created_at,
@@ -440,6 +493,100 @@ def create_watering_event(
     connection.execute("UPDATE plants SET updated_at = ? WHERE id = ?", (created_at, plant_id))
 
 
+def create_user_session(connection: sqlite3.Connection, *, user_id: str) -> str:
+    created_at = now_iso()
+    token = new_session_token()
+    connection.execute(
+        """
+        INSERT INTO user_sessions (
+            id, user_id, token_digest, created_at, expires_at, last_seen_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(uuid.uuid4()),
+            user_id,
+            session_token_digest(token),
+            created_at,
+            session_expires_at(days=SESSION_TTL_DAYS),
+            created_at,
+        ),
+    )
+    return token
+
+
+def fetch_user_by_session_token(
+    connection: sqlite3.Connection,
+    token: str,
+) -> sqlite3.Row | None:
+    cleaned = str(token or "").strip()
+    if not cleaned:
+        return None
+    row = connection.execute(
+        """
+        SELECT u.*
+        FROM user_sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.token_digest = ?
+          AND datetime(s.expires_at) > datetime('now')
+        """,
+        (session_token_digest(cleaned),),
+    ).fetchone()
+    if row is not None:
+        connection.execute(
+            "UPDATE user_sessions SET last_seen_at = ? WHERE token_digest = ?",
+            (now_iso(), session_token_digest(cleaned)),
+        )
+    return row
+
+
+def ai_usage_count(
+    connection: sqlite3.Connection,
+    *,
+    user_id: str,
+    usage_date: str,
+    action: str | None,
+) -> int:
+    if action is None:
+        row = connection.execute(
+            """
+            SELECT COALESCE(SUM(count), 0) AS total
+            FROM ai_usage
+            WHERE user_id = ? AND usage_date = ?
+            """,
+            (user_id, usage_date),
+        ).fetchone()
+        return int(row["total"] or 0)
+    row = connection.execute(
+        """
+        SELECT count
+        FROM ai_usage
+        WHERE user_id = ? AND usage_date = ? AND action = ?
+        """,
+        (user_id, usage_date, action),
+    ).fetchone()
+    return int(row["count"] if row is not None else 0)
+
+
+def increment_ai_usage(
+    connection: sqlite3.Connection,
+    *,
+    user_id: str,
+    usage_date: str,
+    action: str,
+) -> None:
+    updated_at = now_iso()
+    connection.execute(
+        """
+        INSERT INTO ai_usage (user_id, usage_date, action, count, updated_at)
+        VALUES (?, ?, ?, 1, ?)
+        ON CONFLICT(user_id, usage_date, action)
+        DO UPDATE SET count = count + 1, updated_at = excluded.updated_at
+        """,
+        (user_id, usage_date, action, updated_at),
+    )
+
+
 def ensure_claimable_user(connection: sqlite3.Connection) -> str:
     row = connection.execute(
         "SELECT * FROM users WHERE is_claimable = 1 ORDER BY datetime(created_at) ASC LIMIT 1"
@@ -455,6 +602,7 @@ def ensure_claimable_user(connection: sqlite3.Connection) -> str:
         name="Shared Garden",
         email="",
         normalized_email=None,
+        password_hash="",
         is_claimable=True,
         created_at=created_at,
     )
@@ -516,23 +664,37 @@ def create_or_claim_user(
     *,
     name: str,
     email: str,
-) -> tuple[sqlite3.Row, bool]:
+    password: str,
+) -> tuple[sqlite3.Row, bool, bool]:
     cleaned_name = str(name or "").strip()
     cleaned_email = str(email or "").strip()
+    cleaned_password = str(password or "")
     normalized = normalize_email(cleaned_email)
     if not normalized or "@" not in normalized:
         raise ApiError(400, "Add a valid email so your garden follows you across devices.")
+    if len(cleaned_password) < 8:
+        raise ApiError(400, "Use a password with at least 8 characters.")
 
     existing = find_user_by_email(connection, cleaned_email)
     updated_at = now_iso()
     if existing is not None:
+        stored_hash = str(existing["password_hash"] or "")
+        if stored_hash:
+            if not verify_password(cleaned_password, stored_hash):
+                raise ApiError(401, "That password does not match this garden.")
+        else:
+            connection.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (hash_password(cleaned_password), updated_at, existing["id"]),
+            )
+            existing = fetch_user_by_id(connection, str(existing["id"]))
         if cleaned_name and cleaned_name != str(existing["name"] or "").strip():
             connection.execute(
                 "UPDATE users SET name = ?, email = ?, updated_at = ? WHERE id = ?",
                 (cleaned_name, cleaned_email, updated_at, existing["id"]),
             )
             existing = fetch_user_by_id(connection, str(existing["id"]))
-        return existing, False
+        return existing, False, not stored_hash
 
     if not cleaned_name:
         raise ApiError(400, "Add your name to create a new garden.")
@@ -545,6 +707,7 @@ def create_or_claim_user(
             """
             UPDATE users
             SET name = ?, email = ?, normalized_email = ?, is_claimable = 0, updated_at = ?
+            , password_hash = ?
             WHERE id = ?
             """,
             (
@@ -552,10 +715,11 @@ def create_or_claim_user(
                 cleaned_email,
                 normalized,
                 updated_at,
+                hash_password(cleaned_password),
                 claimable["id"],
             ),
         )
-        return fetch_user_by_id(connection, str(claimable["id"])), True
+        return fetch_user_by_id(connection, str(claimable["id"])), True, True
 
     user_id = str(uuid.uuid4())
     create_user(
@@ -564,10 +728,11 @@ def create_or_claim_user(
         name=cleaned_name,
         email=cleaned_email,
         normalized_email=normalized,
+        password_hash=hash_password(cleaned_password),
         is_claimable=False,
         created_at=updated_at,
     )
-    return fetch_user_by_id(connection, user_id), False
+    return fetch_user_by_id(connection, user_id), False, True
 
 
 def ensure_demo_seeded() -> None:

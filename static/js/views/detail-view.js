@@ -35,7 +35,12 @@ export function renderDetail({
   const latest = plant.latest_checkin;
   const heroStatus = (latest && latest.health_status) || "watch";
   const showHeroStatus = !isNeutralStatus(heroStatus);
-  const wateringCalendar = buildWateringCalendar(plant.watering_dates || []);
+  const wateringReferenceDate = new Date();
+  wateringReferenceDate.setDate(1);
+  wateringReferenceDate.setMonth(
+    wateringReferenceDate.getMonth() + Number(state.detailWateringMonthOffset || 0),
+  );
+  const wateringCalendar = buildWateringCalendar(plant.watering_dates || [], wateringReferenceDate);
   const lastWateredLabel = plant.last_watered_on
     ? formatDateOnly(plant.last_watered_on)
     : "";
@@ -156,7 +161,19 @@ export function renderDetail({
             </div>
             <div class="watering-calendar">
               <div class="watering-calendar-head">
+                <button
+                  id="watering-prev-month"
+                  class="watering-month-button"
+                  type="button"
+                  aria-label="Previous month"
+                >&lsaquo;</button>
                 <p class="watering-calendar-label">${escapeHtml(wateringCalendar.monthLabel)}</p>
+                <button
+                  id="watering-next-month"
+                  class="watering-month-button"
+                  type="button"
+                  aria-label="Next month"
+                >&rsaquo;</button>
               </div>
               <div class="watering-weekdays" aria-hidden="true">
                 ${wateringCalendar.weekdays.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
@@ -187,15 +204,15 @@ export function renderDetail({
           </article>
         </section>
 
-        <section class="checkin-card">
+        <section class="checkin-shortcut">
           <a class="primary-button link-button inline-cta" href="#/plant/${encodeURIComponent(plant.id)}/checkin">New check-in</a>
         </section>
 
         <section>
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Plant progression</p>
-              <h2>Photo history</h2>
+              <p class="eyebrow">Plant log</p>
+              <h2>Check-in history</h2>
             </div>
           </div>
           <div class="history-list">${historyMarkup}</div>
@@ -236,6 +253,8 @@ export function renderDetail({
 
   document.getElementById("delete-plant")?.addEventListener("click", actions.onDeletePlant);
   document.getElementById("toggle-today-watering")?.addEventListener("click", actions.onToggleTodayWatering);
+  document.getElementById("watering-prev-month")?.addEventListener("click", actions.onPreviousWateringMonth);
+  document.getElementById("watering-next-month")?.addEventListener("click", actions.onNextWateringMonth);
   detailViewEl.querySelectorAll("[data-delete-checkin]").forEach((button) => {
     button.addEventListener("click", () => {
       const checkinId = button.getAttribute("data-delete-checkin");

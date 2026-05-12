@@ -7,6 +7,11 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("MY_GARDEN_DB_PATH", str(ROOT / "my_garden.db"))).expanduser()
 STATIC_DIR = ROOT / "static"
 UPLOAD_DIR = Path(os.environ.get("MY_GARDEN_UPLOAD_DIR", str(ROOT / "uploads"))).expanduser()
+SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "30"))
+AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "30"))
+AI_IDENTITY_DAILY_LIMIT = int(os.environ.get("AI_IDENTITY_DAILY_LIMIT", "10"))
+AI_CHECKIN_DAILY_LIMIT = int(os.environ.get("AI_CHECKIN_DAILY_LIMIT", "10"))
+AI_CHAT_DAILY_LIMIT = int(os.environ.get("AI_CHAT_DAILY_LIMIT", "20"))
 
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "openai").strip().lower()
 AI_MODEL = os.environ.get("AI_MODEL", "").strip()

@@ -26,6 +26,7 @@ export function createInitialState() {
     detailDraftName: "",
     detailNameEditing: false,
     detailNameSaving: false,
+    detailWateringMonthOffset: 0,
     chatThread: null,
     chatMessages: [],
     chatFocusedCheckin: null,

@@ -10,6 +10,10 @@ primary_region = "sjc"
   PORT = "8080"
   MY_GARDEN_DB_PATH = "/data/my_garden.db"
   MY_GARDEN_UPLOAD_DIR = "/data/uploads"
+  AI_DAILY_LIMIT = "30"
+  AI_IDENTITY_DAILY_LIMIT = "10"
+  AI_CHECKIN_DAILY_LIMIT = "10"
+  AI_CHAT_DAILY_LIMIT = "20"
 
 [http_service]
   internal_port = 8080

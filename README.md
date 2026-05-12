@@ -2,6 +2,8 @@
 
 Simple local mobile-first web app for plant lovers.
 
+Live app: [https://my-garden.fly.dev](https://my-garden.fly.dev)
+
 It does three things:
 - logs the plants you own
 - lets you add a photo check-in for any plant

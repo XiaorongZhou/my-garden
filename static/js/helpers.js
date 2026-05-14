@@ -138,9 +138,74 @@ export function fallbackSummary(checkin) {
 
 export function photoMarkup(url, alt, fallback) {
   if (url) {
-    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" />`;
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" />`;
   }
   return `<div class="empty-photo">${escapeHtml(fallback)}</div>`;
+}
+
+export function thumbnailUrlFor(photoUrl) {
+  const url = String(photoUrl || "").trim();
+  if (!url.startsWith("/uploads/")) {
+    return url || "";
+  }
+  const filename = url.split("/").pop() || "";
+  if (!filename || filename.startsWith("thumb-")) {
+    return url;
+  }
+  const stem = filename.replace(/\.[^.]+$/, "");
+  return `/uploads/thumb-${encodeURIComponent(stem)}.jpg`;
+}
+
+export async function createPhotoThumbnail(file, { maxSize = 360, quality = 0.72 } = {}) {
+  if (!file || !String(file.type || "").startsWith("image/")) {
+    return null;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    const loaded = new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
+    image.src = objectUrl;
+    await loaded;
+
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    const longestSide = Math.max(sourceWidth, sourceHeight);
+    if (!sourceWidth || !sourceHeight || !longestSide) {
+      return null;
+    }
+
+    const scale = Math.min(1, maxSize / longestSide);
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      return null;
+    }
+    context.drawImage(image, 0, 0, width, height);
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", quality);
+    });
+    if (!blob) {
+      return null;
+    }
+    return new File([blob], "thumbnail.jpg", {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  } catch (_error) {
+    return null;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export function historyDisclosureMarkup(checkin, plant) {
@@ -152,7 +217,7 @@ export function historyDisclosureMarkup(checkin, plant) {
     <details class="history-card history-disclosure">
       <summary class="history-summary">
         <div class="history-photo">
-          ${photoMarkup(checkin.photo_url, `${plant.name} check-in`, initialsFor(plant.name))}
+          ${photoMarkup(checkin.thumbnail_url || thumbnailUrlFor(checkin.photo_url), `${plant.name} check-in`, initialsFor(plant.name))}
         </div>
         <div class="history-summary-main">
           <div class="history-title">

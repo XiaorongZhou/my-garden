@@ -1,5 +1,7 @@
 import {
+  createPhotoThumbnail,
   escapeHtml,
+  formatDateOnly,
   isUnknownSuggestionName,
   normalizeDiagnosis,
   normalizeSuggestion,
@@ -13,14 +15,13 @@ import {
   createPlantRequest,
   deleteCheckinRequest,
   deletePlantRequest,
-  deleteWateringRequest,
   fetchPlantDetail,
   fetchPlantChat,
   fetchPlants,
   fetchSession,
   patchPlant,
-  createWateringRequest,
   requestPlantIdentityPreview,
+  setWateringRequest,
   setApiSessionToken,
 } from "/static/js/api.js";
 import {
@@ -323,6 +324,13 @@ function openCheckinPhotoPicker() {
   document.getElementById("checkin-photo")?.click();
 }
 
+async function appendThumbnail(payload, file) {
+  const thumbnail = await createPhotoThumbnail(file);
+  if (thumbnail) {
+    payload.append("thumbnail", thumbnail);
+  }
+}
+
 function handleStartEditDetailName() {
   state.detailDraftName = String(state.selectedPlant?.name || "");
   state.detailNameEditing = true;
@@ -519,23 +527,85 @@ async function handleDeleteCheckin(checkinId) {
   }
 }
 
-async function handleToggleTodayWatering() {
+function syncWateringDom() {
+  if (!state.selectedPlant || state.route.name !== "detail") {
+    return;
+  }
+
+  const wateredDates = new Set(
+    Array.isArray(state.selectedPlant.watering_dates)
+      ? state.selectedPlant.watering_dates.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+  );
+  elements.detailViewEl.querySelectorAll("[data-watering-date]").forEach((button) => {
+    const dateKey = String(button.getAttribute("data-watering-date") || "").trim();
+    const isWatered = wateredDates.has(dateKey);
+    const isToday = dateKey === todayInputValue();
+    button.classList.toggle("is-watered", isWatered);
+    button.setAttribute("aria-pressed", isWatered ? "true" : "false");
+    button.setAttribute(
+      "aria-label",
+      `${dateKey}${isWatered ? ", watered" : ", not watered"}${isToday ? ", today" : ""}`,
+    );
+  });
+
+  const heading = elements.detailViewEl.querySelector(".watering-head h3");
+  if (!heading) {
+    return;
+  }
+  const wateredToday = wateredDates.has(todayInputValue());
+  const lastWateredLabel = state.selectedPlant.last_watered_on
+    ? formatDateOnly(state.selectedPlant.last_watered_on)
+    : "";
+  heading.textContent = wateredToday
+    ? "Watered today"
+    : lastWateredLabel
+      ? `Last watered ${lastWateredLabel}`
+      : "Not watered yet";
+}
+
+async function handleToggleWateringDate(wateredOn) {
   if (!state.selectedPlant) {
     return;
   }
 
   const plantId = state.selectedPlant.id;
-  const alreadyWatered = Boolean(state.selectedPlant.watered_today);
+  const targetDate = String(wateredOn || "").trim();
+  if (!targetDate) {
+    return;
+  }
+  const wateredDates = new Set(
+    Array.isArray(state.selectedPlant.watering_dates)
+      ? state.selectedPlant.watering_dates.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+  );
+  const alreadyWatered = wateredDates.has(targetDate);
+  const previousPlant = state.selectedPlant;
+  if (alreadyWatered) {
+    wateredDates.delete(targetDate);
+  } else {
+    wateredDates.add(targetDate);
+  }
+  const optimisticDates = Array.from(wateredDates).sort().reverse();
+  state.selectedPlant = {
+    ...state.selectedPlant,
+    watering_dates: optimisticDates,
+    watered_today: wateredDates.has(todayInputValue()),
+    last_watered_on: optimisticDates[0] || null,
+  };
+  syncWateringDom();
 
   try {
-    const data = alreadyWatered
-      ? await deleteWateringRequest(plantId)
-      : await createWateringRequest(plantId);
+    const data = await setWateringRequest(plantId, {
+      watered_on: targetDate,
+      watered: !alreadyWatered,
+    });
     state.selectedPlant = data.plant || state.selectedPlant;
-    await loadPlants();
-    renderCurrentView();
+    syncWateringDom();
     showToast(alreadyWatered ? "Watering removed" : "Watering saved");
   } catch (error) {
+    state.selectedPlant = previousPlant;
+    syncWateringDom();
     showToast(error.message || "Could not update watering");
   }
 }
@@ -564,6 +634,7 @@ async function fetchIntakeSuggestion(signature) {
 
   const payload = new FormData();
   payload.append("photo", file);
+  await appendThumbnail(payload, file);
 
   try {
     const data = await requestPlantIdentityPreview(payload);
@@ -679,7 +750,7 @@ function renderCurrentView() {
       },
       onSaveDetailName: saveDetailName,
       onCancelEditName: handleCancelEditDetailName,
-      onToggleTodayWatering: handleToggleTodayWatering,
+      onToggleWateringDate: handleToggleWateringDate,
       onPreviousWateringMonth: handlePreviousWateringMonth,
       onNextWateringMonth: handleNextWateringMonth,
       onDeletePlant: handleDeletePlant,
@@ -759,6 +830,7 @@ async function handleAddPlantSubmit(event) {
   }
   if (activeUploadToken) {
     payload.append("upload_token", activeUploadToken);
+    await appendThumbnail(payload, photoFile);
   } else {
     showToast("Please identify this plant again");
     return;
@@ -817,6 +889,7 @@ async function handleCheckinSubmit(event) {
   const payload = new FormData();
   if (photoFile) {
     payload.append("photo", photoFile);
+    await appendThumbnail(payload, photoFile);
   }
   if (noteValue) {
     payload.append("note", noteValue);

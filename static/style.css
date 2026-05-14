@@ -539,32 +539,6 @@ input:focus::placeholder {
   font-size: 1.02rem;
 }
 
-.watering-button {
-  width: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid rgba(61, 107, 77, 0.16);
-  background: rgba(255, 252, 247, 0.96);
-  color: var(--leaf);
-  box-shadow: 0 8px 18px rgba(55, 45, 24, 0.08);
-}
-
-.watering-button span {
-  font-size: 1.08rem;
-  line-height: 1;
-}
-
-.watering-button.is-active {
-  background: linear-gradient(180deg, #456f4f 0%, #2f543a 100%);
-  color: #f7f5ee;
-  border-color: transparent;
-}
-
 .watering-calendar-label,
 .watering-calendar-hint {
   margin: 0;
@@ -628,19 +602,30 @@ input:focus::placeholder {
 }
 
 .watering-day {
+  appearance: none;
   position: relative;
   min-height: 42px;
   border-radius: 14px;
   border: 1px solid rgba(73, 74, 53, 0.08);
   background: rgba(255, 252, 247, 0.92);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 4px;
+  cursor: pointer;
+  font: inherit;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.watering-day:hover {
+  border-color: rgba(61, 107, 77, 0.22);
+  transform: translateY(-1px);
 }
 
 .watering-day-empty {
   min-height: 42px;
+  cursor: default;
 }
 
 .watering-day.is-today {
@@ -649,30 +634,45 @@ input:focus::placeholder {
 }
 
 .watering-day.is-watered {
-  background: linear-gradient(180deg, rgba(223, 233, 216, 0.9), rgba(236, 244, 232, 0.95));
+  border-color: rgba(47, 133, 167, 0.3);
+  background: linear-gradient(180deg, #e4f7ff 0%, #c6ebf8 100%);
+  box-shadow: 0 8px 16px rgba(47, 133, 167, 0.16);
+}
+
+.watering-day.is-watered::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 9px;
+  height: 12px;
+  border-radius: 70% 70% 70% 10%;
+  background: linear-gradient(145deg, #76dcff 10%, #18a7df 58%, #0877b4 100%);
+  box-shadow: 0 2px 5px rgba(22, 132, 189, 0.24);
+  transform: rotate(45deg);
+}
+
+.watering-day.is-watered::before {
+  content: "";
+  position: absolute;
+  right: 9px;
+  bottom: 12px;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  z-index: 1;
 }
 
 .watering-day-number {
-  color: var(--text);
+  color: inherit;
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1;
 }
 
-.watering-drop {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(255, 252, 247, 0.82);
-  box-shadow: 0 2px 6px rgba(47, 84, 58, 0.12);
-  font-size: 0.62rem;
-  line-height: 1;
+.watering-day.is-watered .watering-day-number {
+  color: #16445d;
 }
 
 .history-chat-button {
@@ -1352,11 +1352,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .info-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .watering-button {
-    width: 44px;
-    min-width: 44px;
   }
 
   .history-list {

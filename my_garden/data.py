@@ -14,6 +14,7 @@ from .auth import (
 )
 from .config import DB_PATH, DEMO_CAT_PALM_ID, DEMO_MAIDENHAIR_ID, SESSION_TTL_DAYS
 from .errors import ApiError
+from .http_utils import thumbnail_url_for
 from .plant_ai import default_tip_for_identity, heuristic_chinese_name
 
 REFERENCE_NOTE_TEXTS = {
@@ -1192,11 +1193,13 @@ def latest_checkin_row(connection: sqlite3.Connection, plant_id: str) -> sqlite3
 
 
 def serialize_checkin(row: sqlite3.Row) -> dict[str, object]:
+    photo_url = row["photo_url"]
     return {
         "id": row["id"],
         "plant_id": row["plant_id"],
         "note": row["note"],
-        "photo_url": row["photo_url"],
+        "photo_url": photo_url,
+        "thumbnail_url": thumbnail_url_for(photo_url),
         "health_status": row["health_status"],
         "diagnosis_title": row["diagnosis_title"],
         "diagnosis_summary": row["diagnosis_summary"],
@@ -1250,6 +1253,11 @@ def serialize_plant_summary(connection: sqlite3.Connection, row: sqlite3.Row) ->
     latest = latest_checkin_row(connection, row["id"])
     latest_payload = serialize_checkin(latest) if latest else None
     photo_url = latest_payload["photo_url"] if latest_payload and latest_payload.get("photo_url") else row["cover_photo_url"]
+    thumbnail_url = (
+        latest_payload["thumbnail_url"]
+        if latest_payload and latest_payload.get("thumbnail_url")
+        else thumbnail_url_for(row["cover_photo_url"])
+    )
     return {
         "id": row["id"],
         "name": row["name"],
@@ -1258,6 +1266,7 @@ def serialize_plant_summary(connection: sqlite3.Connection, row: sqlite3.Row) ->
         "location": row["location"],
         "tip": serialize_tip(row),
         "photo_url": photo_url,
+        "thumbnail_url": thumbnail_url,
         "cover_photo_url": row["cover_photo_url"],
         "latest_status": latest_payload["health_status"] if latest_payload else None,
         "latest_title": latest_payload["diagnosis_title"] if latest_payload else None,

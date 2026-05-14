@@ -64,11 +64,23 @@ def parse_multipart(handler: BaseHTTPRequestHandler) -> tuple[dict[str, str], di
     return fields, files
 
 
-def pick_file(files: dict[str, list[dict[str, object]]]) -> dict[str, object] | None:
+def pick_file(
+    files: dict[str, list[dict[str, object]]],
+    *,
+    field_names: tuple[str, ...] | None = None,
+) -> dict[str, object] | None:
+    if field_names is not None:
+        for key in field_names:
+            if files.get(key):
+                return files[key][0]
+        return None
+
     for key in ("photo", "image", "photos[]", "photos", "file"):
         if files.get(key):
             return files[key][0]
-    for candidates in files.values():
+    for key, candidates in files.items():
+        if key == "thumbnail":
+            continue
         if candidates:
             return candidates[0]
     return None
@@ -88,6 +100,40 @@ def store_upload(file_payload: dict[str, object], *, prefix: str) -> str:
     path = UPLOAD_DIR / name
     path.write_bytes(file_payload.get("bytes", b""))
     return f"/uploads/{name}"
+
+
+def thumbnail_name_for_photo_url(photo_url: str | None) -> str:
+    if not photo_url or not photo_url.startswith("/uploads/"):
+        return ""
+    original_name = photo_url.rsplit("/", 1)[-1]
+    stem = Path(original_name).stem
+    if not stem:
+        return ""
+    return f"thumb-{stem}.jpg"
+
+
+def thumbnail_url_for(photo_url: str | None) -> str | None:
+    if not photo_url:
+        return None
+    thumbnail_name = thumbnail_name_for_photo_url(photo_url)
+    if not thumbnail_name:
+        return photo_url
+    thumbnail_path = UPLOAD_DIR / thumbnail_name
+    if thumbnail_path.exists() and thumbnail_path.is_file():
+        return f"/uploads/{thumbnail_name}"
+    return photo_url
+
+
+def store_thumbnail(file_payload: dict[str, object] | None, *, photo_url: str | None) -> str | None:
+    if not file_payload or not photo_url:
+        return None
+    thumbnail_name = thumbnail_name_for_photo_url(photo_url)
+    if not thumbnail_name:
+        return None
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / thumbnail_name
+    path.write_bytes(file_payload.get("bytes", b""))
+    return f"/uploads/{thumbnail_name}"
 
 
 def upload_token_from_url(photo_url: str | None) -> str:
@@ -121,6 +167,11 @@ def maybe_delete_upload(photo_url: str | None) -> None:
     path = safe_child(UPLOAD_DIR, relative)
     if path.exists() and path.is_file():
         path.unlink()
+    thumbnail_name = thumbnail_name_for_photo_url(photo_url)
+    if thumbnail_name:
+        thumbnail_path = UPLOAD_DIR / thumbnail_name
+        if thumbnail_path.exists() and thumbnail_path.is_file():
+            thumbnail_path.unlink()
 
 
 def content_type_for(path: Path) -> str:

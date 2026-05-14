@@ -52,9 +52,11 @@ from .http_utils import (
     pick_file,
     safe_child,
     static_index_path,
+    store_thumbnail,
     store_upload,
     upload_token_from_url,
 )
+from .ai_providers import model_runtime_summary
 from .limits import consume_ai_quota
 from .plant_ai import (
     answer_plant_followup,
@@ -273,6 +275,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
             if path == "/api/plant-identity-preview":
                 fields, files = parse_multipart(self)
                 file_payload = pick_file(files)
+                thumbnail_payload = pick_file(files, field_names=("thumbnail",))
                 if not file_payload:
                     raise ApiError(HTTPStatus.BAD_REQUEST, "Add a plant photo first.")
                 with get_conn() as connection:
@@ -281,6 +284,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     connection.commit()
                 note = str(fields.get("notes") or fields.get("note") or "").strip()
                 preview_photo_url = store_upload(file_payload, prefix="preview")
+                store_thumbnail(thumbnail_payload, photo_url=preview_photo_url)
                 preview = build_add_preview(
                     note=note,
                     filename=str(file_payload.get("filename") or ""),
@@ -328,10 +332,12 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 else:
                     fields, files = parse_multipart(self)
                     file_payload = pick_file(files)
+                    thumbnail_payload = pick_file(files, field_names=("thumbnail",))
                     raw_upload_token = fields.get("upload_token") or ""
                     photo_url = store_upload(file_payload, prefix="plant") if file_payload else None
                     if not photo_url and raw_upload_token:
                         photo_url = photo_url_from_upload_token(str(raw_upload_token))
+                    store_thumbnail(thumbnail_payload, photo_url=photo_url)
                     notes = str(fields.get("notes") or fields.get("note") or "").strip()
                     initial_note = notes
                     location = str(fields.get("location") or "").strip() or "Home"
@@ -464,7 +470,9 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     fields, files = parse_multipart(self)
                     note = str(fields.get("note") or "").strip()
                     file_payload = pick_file(files)
+                    thumbnail_payload = pick_file(files, field_names=("thumbnail",))
                     photo_url = store_upload(file_payload, prefix=plant_id) if file_payload else None
+                    store_thumbnail(thumbnail_payload, photo_url=photo_url)
 
                 if not note and not photo_url:
                     raise ApiError(HTTPStatus.BAD_REQUEST, "Add a photo or a note for this check-in.")
@@ -617,6 +625,54 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     }
                     connection.commit()
                 return self._send_json(payload_out, status=201)
+
+            watering_toggle_match = re.fullmatch(r"/api/plants/([^/]+)/waterings/toggle", path)
+            if watering_toggle_match:
+                plant_id = watering_toggle_match.group(1)
+                payload = parse_json_body(self)
+                if not isinstance(payload, dict):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Watering payload must be a JSON object.")
+                watered_on = str(payload.get("watered_on") or "").strip() or today_date_iso()
+                should_be_watered = bool(payload.get("watered", True))
+
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", watered_on):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "Watering date must use YYYY-MM-DD.")
+
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    existing = fetch_watering_row(connection, plant_id=plant_id, watered_on=watered_on)
+                    created = False
+                    deleted = False
+                    if should_be_watered and existing is None:
+                        create_watering_event(
+                            connection,
+                            watering_id=str(uuid.uuid4()),
+                            plant_id=plant_id,
+                            watered_on=watered_on,
+                            created_at=now_iso(),
+                        )
+                        created = True
+                    elif not should_be_watered and existing is not None:
+                        connection.execute("DELETE FROM waterings WHERE id = ?", (str(existing["id"]),))
+                        deleted = True
+
+                    if created or deleted:
+                        connection.execute(
+                            "UPDATE plants SET updated_at = ? WHERE id = ?",
+                            (now_iso(), plant_id),
+                        )
+
+                    row = fetch_plant_row(connection, plant_id, user_id=str(user["id"]))
+                    payload_out = {
+                        "created": created,
+                        "deleted": deleted,
+                        "watered": should_be_watered,
+                        "watered_on": watered_on,
+                        "plant": serialize_plant_detail(connection, row),
+                    }
+                    connection.commit()
+                return self._send_json(payload_out, status=201 if created else 200)
 
             watering_match = re.fullmatch(r"/api/plants/([^/]+)/waterings", path)
             if watering_match:
@@ -846,6 +902,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8000) -> None:
         print("Try a different port, e.g. PORT=8030 python3 app.py")
         raise
     print(f"Serving My Garden on http://{host}:{port}")
+    print(model_runtime_summary())
     try:
         server.serve_forever()
     except KeyboardInterrupt:

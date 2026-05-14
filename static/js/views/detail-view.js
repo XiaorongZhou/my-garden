@@ -10,6 +10,7 @@ import {
   photoMarkup,
   placeholderPhotoMarkup,
   statusLabel,
+  todayInputValue,
 } from "/static/js/helpers.js";
 
 export function renderDetail({
@@ -41,6 +42,12 @@ export function renderDetail({
     wateringReferenceDate.getMonth() + Number(state.detailWateringMonthOffset || 0),
   );
   const wateringCalendar = buildWateringCalendar(plant.watering_dates || [], wateringReferenceDate);
+  const wateredDates = new Set(
+    Array.isArray(plant.watering_dates)
+      ? plant.watering_dates.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+  );
+  const wateredToday = wateredDates.has(todayInputValue());
   const lastWateredLabel = plant.last_watered_on
     ? formatDateOnly(plant.last_watered_on)
     : "";
@@ -143,21 +150,13 @@ export function renderDetail({
               <div>
                 <p class="eyebrow">Watering</p>
                 <h3>${
-                  plant.watered_today
+                  wateredToday
                     ? "Watered today"
                     : lastWateredLabel
                       ? `Last watered ${escapeHtml(lastWateredLabel)}`
                       : "Not watered yet"
                 }</h3>
               </div>
-              <button
-                id="toggle-today-watering"
-                class="watering-button ${plant.watered_today ? "is-active" : ""}"
-                type="button"
-                aria-label="${plant.watered_today ? "Remove today's watering" : "Log today's watering"}"
-                aria-pressed="${plant.watered_today ? "true" : "false"}"
-                title="${plant.watered_today ? "Remove today's watering" : "Log today's watering"}"
-              ><span aria-hidden="true">💧</span></button>
             </div>
             <div class="watering-calendar">
               <div class="watering-calendar-head">
@@ -189,14 +188,16 @@ export function renderDetail({
                     cell.isToday ? "is-today" : "",
                   ].filter(Boolean).join(" ");
                   return `
-                    <div
+                    <button
                       class="${classes}"
+                      type="button"
+                      data-watering-date="${escapeHtml(cell.key)}"
                       title="${escapeHtml(cell.key)}"
-                      aria-label="${escapeHtml(cell.key)}${cell.watered ? ", watered" : ""}${cell.isToday ? ", today" : ""}"
+                      aria-label="${escapeHtml(cell.key)}${cell.watered ? ", watered" : ", not watered"}${cell.isToday ? ", today" : ""}"
+                      aria-pressed="${cell.watered ? "true" : "false"}"
                     >
                       <span class="watering-day-number">${escapeHtml(cell.label)}</span>
-                      ${cell.watered ? `<span class="watering-drop" aria-hidden="true">💧</span>` : ""}
-                    </div>
+                    </button>
                   `;
                 }).join("")}
               </div>
@@ -252,9 +253,16 @@ export function renderDetail({
   }
 
   document.getElementById("delete-plant")?.addEventListener("click", actions.onDeletePlant);
-  document.getElementById("toggle-today-watering")?.addEventListener("click", actions.onToggleTodayWatering);
   document.getElementById("watering-prev-month")?.addEventListener("click", actions.onPreviousWateringMonth);
   document.getElementById("watering-next-month")?.addEventListener("click", actions.onNextWateringMonth);
+  detailViewEl.querySelectorAll("[data-watering-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const wateredOn = button.getAttribute("data-watering-date");
+      if (wateredOn) {
+        void actions.onToggleWateringDate(wateredOn);
+      }
+    });
+  });
   detailViewEl.querySelectorAll("[data-delete-checkin]").forEach((button) => {
     button.addEventListener("click", () => {
       const checkinId = button.getAttribute("data-delete-checkin");

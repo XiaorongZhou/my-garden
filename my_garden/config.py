@@ -18,6 +18,7 @@ AI_MODEL = os.environ.get("AI_MODEL", "").strip()
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "").strip()
 AI_API_KEY = os.environ.get("AI_API_KEY", "").strip()
 AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS", os.environ.get("OPENAI_TIMEOUT_SECONDS", "25")))
+MODEL_DEBUG = os.environ.get("MODEL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
 OPENAI_RESPONSES_URL = os.environ.get("OPENAI_RESPONSES_URL", "https://api.openai.com/v1/responses")
 OPENAI_PLANT_MODEL = os.environ.get("OPENAI_PLANT_MODEL", AI_MODEL or "gpt-5-mini")

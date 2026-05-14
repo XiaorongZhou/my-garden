@@ -14,6 +14,9 @@ primary_region = "sjc"
   AI_IDENTITY_DAILY_LIMIT = "10"
   AI_CHECKIN_DAILY_LIMIT = "10"
   AI_CHAT_DAILY_LIMIT = "20"
+  AI_PROVIDER = "local"
+  LOCAL_VLM_BASE_URL = "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+  LOCAL_VLM_MODEL = "qwen3-vl-flash-us"
 
 [http_service]
   internal_port = 8080

@@ -137,6 +137,17 @@ export async function createWateringRequest(plantId, payload = {}) {
   return parseJson(response, "Could not save watering.");
 }
 
+export async function setWateringRequest(plantId, payload = {}) {
+  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/waterings/toggle`, {
+    method: "POST",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(payload),
+  });
+  return parseJson(response, "Could not update watering.");
+}
+
 export async function createPlantChatMessageRequest(plantId, payload) {
   const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/chat/messages`, {
     method: "POST",

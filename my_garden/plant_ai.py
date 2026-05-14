@@ -11,6 +11,7 @@ from .ai_providers import (
     active_provider_source,
     call_structured_output,
     live_model_available,
+    log_model_event,
 )
 from .config import (
     HEIC_MIME_TYPES,
@@ -501,6 +502,7 @@ def compact_imported_diagnosis(
         health_status=health_status,
     )
     if not live_model_available():
+        log_model_event("fallback", flow="compact_import", reason="live_model_unavailable")
         return fallback
 
     schema = {
@@ -547,7 +549,8 @@ def compact_imported_diagnosis(
                 "- do not mention ChatGPT, import, or formatting cleanup"
             ),
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        log_model_event("fallback", flow="compact_import", reason=str(exc)[:220])
         return fallback
 
     compacted = {
@@ -692,13 +695,16 @@ def build_add_preview(
             filename=filename,
             content_type=content_type,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        log_model_event("fallback", flow="plant_intake", reason=f"image_prepare_failed: {exc}")
         suggestion["caption"] = "This photo format could not be prepared for live plant ID, so we used a local backup guess."
         return preview
     if not supports_vision_input(filename=model_filename, content_type=model_content_type):
+        log_model_event("fallback", flow="plant_intake", reason="unsupported_vision_input")
         suggestion["caption"] = "This photo format is not supported by the live vision model yet, so we used a local backup guess."
         return preview
     if not live_model_available():
+        log_model_event("fallback", flow="plant_intake", reason="live_model_unavailable")
         suggestion["caption"] = live_model_unavailable_caption()
         return preview
     try:
@@ -708,7 +714,8 @@ def build_add_preview(
             content_type=model_content_type,
             photo_bytes=model_bytes,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        log_model_event("fallback", flow="plant_intake", reason=str(exc)[:220])
         suggestion["caption"] = live_model_failure_caption()
         return preview
 
@@ -729,15 +736,18 @@ def infer_plant_identity(
             filename=filename,
             content_type=content_type,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        log_model_event("fallback", flow="plant_identity", reason=f"image_prepare_failed: {exc}")
         fallback["caption"] = "This photo format could not be prepared for live plant ID, so we used a local backup guess."
         return fallback
     if not supports_vision_input(filename=model_filename, content_type=model_content_type):
+        log_model_event("fallback", flow="plant_identity", reason="unsupported_vision_input")
         fallback["caption"] = (
             "This photo format is not supported by the live vision model yet, so we used a local backup guess."
         )
         return fallback
     if not live_model_available():
+        log_model_event("fallback", flow="plant_identity", reason="live_model_unavailable")
         fallback["caption"] = live_model_unavailable_caption()
         return fallback
     try:
@@ -747,7 +757,8 @@ def infer_plant_identity(
             content_type=model_content_type,
             photo_bytes=model_bytes,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        log_model_event("fallback", flow="plant_identity", reason=str(exc)[:220])
         fallback["caption"] = live_model_failure_caption()
         return fallback
 
@@ -994,9 +1005,12 @@ def diagnose_plant(
                 content_type=model_content_type,
                 photo_bytes=model_bytes,
             )
-        except RuntimeError:
+        except RuntimeError as exc:
+            log_model_event("fallback", flow="plant_diagnosis", reason=str(exc)[:220])
             pass
 
+    if not live_model_available():
+        log_model_event("fallback", flow="plant_diagnosis", reason="live_model_unavailable")
     return heuristic_diagnosis(plant, note, has_photo)
 
 
@@ -1153,6 +1167,7 @@ def answer_plant_followup(
         raise RuntimeError("Follow-up question is empty.")
 
     if not live_model_available():
+        log_model_event("fallback", flow="plant_followup", reason="live_model_unavailable")
         return heuristic_followup_answer(
             plant=plant,
             question=cleaned_question,
@@ -1237,7 +1252,8 @@ def answer_plant_followup(
             user_prompt=user_prompt,
             image=None,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        log_model_event("fallback", flow="plant_followup", reason=str(exc)[:220])
         return heuristic_followup_answer(
             plant=plant,
             question=cleaned_question,

@@ -4,6 +4,7 @@ import base64
 import json
 import mimetypes
 import re
+import sys
 from dataclasses import dataclass
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -14,6 +15,7 @@ from .config import (
     LOCAL_VLM_API_KEY,
     LOCAL_VLM_BASE_URL,
     LOCAL_VLM_MODEL,
+    MODEL_DEBUG,
     OPENAI_PLANT_MODEL,
     OPENAI_RESPONSES_URL,
 )
@@ -38,6 +40,42 @@ def active_provider_source() -> str:
     if provider in {"local", "qwen", "vllm", "openai-compatible"}:
         return "local"
     return "openai"
+
+
+def model_runtime_summary() -> str:
+    source = active_provider_source()
+    if source == "local":
+        return (
+            "AI runtime: "
+            f"provider={AI_PROVIDER or 'local'} "
+            f"source=local "
+            f"model={LOCAL_VLM_MODEL or 'unset'} "
+            f"base_url={LOCAL_VLM_BASE_URL or 'unset'} "
+            f"api_key={'set' if bool(LOCAL_VLM_API_KEY) else 'missing'} "
+            f"debug={'on' if MODEL_DEBUG else 'off'}"
+        )
+    return (
+        "AI runtime: "
+        f"provider={AI_PROVIDER or 'openai'} "
+        f"source=openai "
+        f"model={OPENAI_PLANT_MODEL or 'unset'} "
+        f"url={OPENAI_RESPONSES_URL or 'unset'} "
+        f"api_key={'set' if bool(openai_api_key()) else 'missing'} "
+        f"debug={'on' if MODEL_DEBUG else 'off'}"
+    )
+
+
+def log_model_event(event: str, **fields: object) -> None:
+    if not MODEL_DEBUG:
+        return
+    rendered_fields = " ".join(
+        f"{key}={str(value).replace(chr(10), ' ') or 'empty'}"
+        for key, value in fields.items()
+    )
+    message = f"[model] {event}"
+    if rendered_fields:
+        message = f"{message} {rendered_fields}"
+    print(message, file=sys.stderr, flush=True)
 
 
 def live_model_available() -> bool:
@@ -215,6 +253,15 @@ def _call_openai_structured_output(
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set.")
 
+    log_model_event(
+        "request",
+        provider="openai",
+        model=OPENAI_PLANT_MODEL,
+        endpoint=OPENAI_RESPONSES_URL,
+        schema=schema_name,
+        image="yes" if image else "no",
+    )
+
     user_content: list[dict[str, object]] = [{"type": "input_text", "text": user_prompt}]
     if image:
         user_content.append(
@@ -258,7 +305,14 @@ def _call_openai_structured_output(
         api_key=api_key,
     )
     raw_text = _extract_openai_output_text(response_payload)
-    return _extract_json_object(raw_text)
+    parsed = _extract_json_object(raw_text)
+    log_model_event(
+        "response",
+        provider="openai",
+        model=OPENAI_PLANT_MODEL,
+        schema=schema_name,
+    )
+    return parsed
 
 
 def _call_local_structured_output(
@@ -293,9 +347,20 @@ def _call_local_structured_output(
     }
 
     api_key = LOCAL_VLM_API_KEY
+    endpoint = _local_chat_completions_url()
+    log_model_event(
+        "request",
+        provider=AI_PROVIDER or "local",
+        source="local",
+        model=LOCAL_VLM_MODEL,
+        endpoint=endpoint,
+        schema=schema_name,
+        image="yes" if image else "no",
+        api_key="set" if bool(api_key) else "missing",
+    )
     try:
         response_payload = _post_json(
-            url=_local_chat_completions_url(),
+            url=endpoint,
             payload={
                 **base_payload,
                 "response_format": {
@@ -311,8 +376,25 @@ def _call_local_structured_output(
             api_key=api_key,
         )
         raw_text = _extract_chat_completion_text(response_payload)
-        return _extract_json_object(raw_text)
+        parsed = _extract_json_object(raw_text)
+        log_model_event(
+            "response",
+            provider=AI_PROVIDER or "local",
+            source="local",
+            model=LOCAL_VLM_MODEL,
+            schema=schema_name,
+            mode="json_schema",
+        )
+        return parsed
     except RuntimeError as first_error:
+        log_model_event(
+            "retry",
+            provider=AI_PROVIDER or "local",
+            source="local",
+            model=LOCAL_VLM_MODEL,
+            schema=schema_name,
+            reason=str(first_error)[:220],
+        )
         fallback_prompt = (
             f"{user_prompt}\n\n"
             "Return only one JSON object that matches this schema exactly:\n"
@@ -333,12 +415,29 @@ def _call_local_structured_output(
         }
         try:
             response_payload = _post_json(
-                url=_local_chat_completions_url(),
+                url=endpoint,
                 payload=fallback_payload,
                 timeout_seconds=AI_TIMEOUT_SECONDS,
                 api_key=api_key,
             )
             raw_text = _extract_chat_completion_text(response_payload)
-            return _extract_json_object(raw_text)
+            parsed = _extract_json_object(raw_text)
+            log_model_event(
+                "response",
+                provider=AI_PROVIDER or "local",
+                source="local",
+                model=LOCAL_VLM_MODEL,
+                schema=schema_name,
+                mode="prompt_schema",
+            )
+            return parsed
         except RuntimeError as second_error:
+            log_model_event(
+                "failure",
+                provider=AI_PROVIDER or "local",
+                source="local",
+                model=LOCAL_VLM_MODEL,
+                schema=schema_name,
+                reason=str(second_error)[:220],
+            )
             raise RuntimeError(f"{first_error} Fallback parse also failed. {second_error}") from second_error

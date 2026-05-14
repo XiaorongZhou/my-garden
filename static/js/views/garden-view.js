@@ -1,4 +1,4 @@
-import { escapeHtml, initialsFor, isNeutralStatus, photoMarkup, statusLabel } from "/static/js/helpers.js";
+import { escapeHtml, initialsFor, isNeutralStatus, photoMarkup, statusLabel, thumbnailUrlFor } from "/static/js/helpers.js";
 
 export function renderGarden({ state, gardenViewEl, onOpenPlant }) {
   if (!state.plants.length) {
@@ -22,7 +22,7 @@ export function renderGarden({ state, gardenViewEl, onOpenPlant }) {
       return `
         <button class="garden-row" type="button" data-open-plant="${escapeHtml(plant.id)}">
           <div class="garden-row-thumb">
-            ${photoMarkup(plant.photo_url, `${plant.name} thumbnail`, initialsFor(plant.name))}
+            ${photoMarkup(plant.thumbnail_url || thumbnailUrlFor(plant.photo_url), `${plant.name} thumbnail`, initialsFor(plant.name))}
           </div>
           <div class="garden-row-main">
             <div class="garden-row-head">

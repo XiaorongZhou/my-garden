@@ -46,13 +46,18 @@ import {
 const elements = {
   authViewEl: document.getElementById("auth-view"),
   authForm: document.getElementById("auth-form"),
+  authEyebrowEl: document.getElementById("auth-eyebrow"),
   authTitleEl: document.getElementById("auth-title"),
   authCopyEl: document.getElementById("auth-copy"),
   authNameFieldEl: document.getElementById("auth-name-field"),
+  authNameLabelEl: document.getElementById("auth-name-label"),
   authNameInput: document.getElementById("auth-name"),
+  authEmailLabelEl: document.getElementById("auth-email-label"),
   authEmailInput: document.getElementById("auth-email"),
+  authPasswordLabelEl: document.getElementById("auth-password-label"),
   authPasswordInput: document.getElementById("auth-password"),
   authSubmitButton: document.getElementById("auth-submit"),
+  languageButtons: Array.from(document.querySelectorAll("[data-language]")),
   sessionBarEl: document.getElementById("session-bar"),
   sessionUserNameEl: document.getElementById("session-user-name"),
   sessionUserEmailEl: document.getElementById("session-user-email"),
@@ -65,8 +70,12 @@ const elements = {
   toastEl: document.getElementById("toast"),
   tabBarEl: document.querySelector(".tab-bar"),
   tabButtons: Array.from(document.querySelectorAll(".tab-button")),
+  addEyebrowEl: document.getElementById("add-eyebrow"),
+  addTitleEl: document.getElementById("add-title"),
   intakePhotoInput: document.getElementById("intake-photo"),
+  intakeLocationLabelEl: document.getElementById("plant-location-label"),
   intakeLocationInput: document.getElementById("plant-location"),
+  intakePurchaseDateLabelEl: document.getElementById("plant-purchase-date-label"),
   intakePurchaseDateInput: document.getElementById("plant-purchase-date"),
   roomOptionsEl: document.getElementById("room-options"),
   intakePreviewEl: document.getElementById("intake-photo-preview"),
@@ -91,6 +100,160 @@ const elements = {
 const state = createInitialState();
 const SESSION_STORAGE_KEY = "my-garden-session-token";
 const REMEMBERED_USER_STORAGE_KEY = "my-garden-remembered-user";
+const LANGUAGE_STORAGE_KEY = "my-garden-language";
+
+const COPY = {
+  en: {
+    auth: {
+      eyebrow: "Your garden",
+      openTitle: "Open your garden",
+      createTitle: "Create your garden",
+      claimTitle: "Claim your garden",
+      openCopy: "Sign in with your email and garden password. If this is a new garden, we’ll ask for your name next.",
+      createCopy: "This email is new here, so add your name once to create a new garden.",
+      claimCopy: "This email is new here, so add your name once to claim the shared garden. Your password will protect it going forward.",
+      name: "Your name",
+      namePlaceholder: "Alicia",
+      email: "Email",
+      emailPlaceholder: "you@example.com",
+      password: "Password",
+      passwordPlaceholder: "At least 8 characters",
+      continue: "Continue",
+      opening: "Opening...",
+    },
+    tabs: {
+      add: "Add Plant",
+      garden: "Your Garden",
+    },
+    session: {
+      eyebrow: "Garden",
+      switch: "Switch",
+      gardenSuffix: "garden",
+    },
+    add: {
+      eyebrow: "New plant",
+      title: "Describe your plant",
+      location: "Where it lives",
+      locationPlaceholder: "Choose an existing room or type a new one",
+      purchaseDate: "Purchase date",
+      save: "Save plant",
+      saving: "Saving...",
+      identify: "Identify plant",
+      identifying: "Identifying...",
+      reIdentify: "Re-identify plant",
+      photoButton: "Take or choose photo",
+      loadingName: "Looking closely...",
+      loadingSpecies: "Identifying your plant",
+      loadingCaption: "We’re identifying the plant and drafting a first read before you save.",
+      readyName: "Ready when you are",
+      readySpecies: "Photo attached",
+      readyCaption: "Tap Identify plant to preview the plant name and first read before saving.",
+      initialReadFallback: "Initial read saved and ready to use when you save this plant.",
+      careTip: "Care tip",
+      nameUnknownPlaceholder: "Give this plant a name before saving",
+      nameEditPlaceholder: "Edit the plant name before saving",
+    },
+    garden: {
+      emptyEyebrow: "No plants yet",
+      emptyTitle: "Start with the camera",
+      emptyCopy: "Use the Add Plant tab to snap a photo, save the plant, and create its first diagnosis.",
+      eyebrow: "Your garden",
+      title: "Plant list",
+      plantCount: (count) => `${count} ${count === 1 ? "plant" : "plants"}`,
+      home: "Home",
+      fallbackSummary: "No diagnosis yet. Start with a photo check-in.",
+    },
+    toast: {
+      addPhotoFirst: "Add a photo first",
+      takePhotoFirst: "Take a photo first",
+      identifyFirst: "Tap Identify plant first",
+      namePlant: "Name this plant before saving",
+      reidentify: "Please identify this plant again",
+      savedPrefix: "Saved",
+      saveError: "Could not save plant",
+      authEmail: "Add your email first",
+      authPassword: "Use at least 8 characters",
+      authName: "Add your name to finish opening this garden",
+    },
+  },
+  zh: {
+    auth: {
+      eyebrow: "你的花园",
+      openTitle: "打开你的花园",
+      createTitle: "创建你的花园",
+      claimTitle: "认领你的花园",
+      openCopy: "用邮箱和花园密码登录。如果这是新花园，下一步会请你填写名字。",
+      createCopy: "这个邮箱还没有花园。填写一次名字，就可以创建你的专属花园。",
+      claimCopy: "这个邮箱还没有花园。填写一次名字，就可以认领这个花园，以后用密码保护。",
+      name: "你的名字",
+      namePlaceholder: "Alicia",
+      email: "邮箱",
+      emailPlaceholder: "you@example.com",
+      password: "密码",
+      passwordPlaceholder: "至少 8 位",
+      continue: "继续",
+      opening: "正在打开...",
+    },
+    tabs: {
+      add: "添加植物",
+      garden: "我的花园",
+    },
+    session: {
+      eyebrow: "花园",
+      switch: "切换",
+      gardenSuffix: "的花园",
+    },
+    add: {
+      eyebrow: "新植物",
+      title: "描述你的植物",
+      location: "放在哪里",
+      locationPlaceholder: "选择已有房间，或输入新位置",
+      purchaseDate: "购买日期",
+      save: "保存植物",
+      saving: "保存中...",
+      identify: "识别植物",
+      identifying: "识别中...",
+      reIdentify: "重新识别",
+      photoButton: "拍照或从相册选择",
+      loadingName: "正在仔细看...",
+      loadingSpecies: "正在识别植物",
+      loadingCaption: "正在识别植物，并在保存前生成第一条健康判断。",
+      readyName: "准备好了",
+      readySpecies: "已添加照片",
+      readyCaption: "点“识别植物”，先预览植物名称和第一条健康判断。",
+      initialReadFallback: "初始判断已保存，保存植物后就能看到。",
+      careTip: "养护提示",
+      nameUnknownPlaceholder: "保存前给这棵植物起个名字",
+      nameEditPlaceholder: "保存前可以修改植物名称",
+    },
+    garden: {
+      emptyEyebrow: "还没有植物",
+      emptyTitle: "从拍一张照片开始",
+      emptyCopy: "去“添加植物”拍照或选图，保存植物，并生成第一条健康判断。",
+      eyebrow: "我的花园",
+      title: "植物列表",
+      plantCount: (count) => `${count} 棵植物`,
+      home: "家里",
+      fallbackSummary: "还没有诊断。先拍一张照片做第一次记录吧。",
+    },
+    toast: {
+      addPhotoFirst: "先添加一张照片",
+      takePhotoFirst: "先拍照或选择照片",
+      identifyFirst: "先点“识别植物”",
+      namePlant: "保存前先给植物起个名字",
+      reidentify: "请重新识别这棵植物",
+      savedPrefix: "已保存",
+      saveError: "暂时无法保存植物",
+      authEmail: "先填写邮箱",
+      authPassword: "密码至少 8 位",
+      authName: "填写名字后就可以打开花园",
+    },
+  },
+};
+
+function t() {
+  return COPY[state.language] || COPY.en;
+}
 
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) {
@@ -138,6 +301,17 @@ function storeRememberedUser(user) {
   }
   window.localStorage.removeItem(REMEMBERED_USER_STORAGE_KEY);
   state.rememberedUser = null;
+}
+
+function readStoredLanguage() {
+  const stored = String(window.localStorage.getItem(LANGUAGE_STORAGE_KEY) || "").trim();
+  return stored === "zh" ? "zh" : "en";
+}
+
+function setLanguage(language) {
+  state.language = language === "zh" ? "zh" : "en";
+  window.localStorage.setItem(LANGUAGE_STORAGE_KEY, state.language);
+  document.documentElement.lang = state.language === "zh" ? "zh-CN" : "en";
 }
 
 function readStoredSessionToken() {
@@ -254,6 +428,15 @@ function setActiveTab() {
     return;
   }
   elements.tabBarEl.hidden = false;
+  elements.tabButtons.forEach((button) => {
+    const route = button.getAttribute("data-route");
+    if (route === "add") {
+      button.textContent = t().tabs.add;
+    }
+    if (route === "garden") {
+      button.textContent = t().tabs.garden;
+    }
+  });
   const activeRoute = state.route.name === "detail" || state.route.name === "checkin" || state.route.name === "chat"
     ? "garden"
     : state.route.name;
@@ -262,6 +445,24 @@ function setActiveTab() {
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-current", isActive ? "page" : "false");
   });
+}
+
+function renderLanguageOptions() {
+  elements.languageButtons.forEach((button) => {
+    const isActive = button.getAttribute("data-language") === state.language;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
+
+function renderAddStaticCopy() {
+  const copy = t().add;
+  elements.addEyebrowEl.textContent = copy.eyebrow;
+  elements.addTitleEl.textContent = copy.title;
+  elements.intakeLocationLabelEl.textContent = copy.location;
+  elements.intakeLocationInput.placeholder = copy.locationPlaceholder;
+  elements.intakePurchaseDateLabelEl.textContent = copy.purchaseDate;
+  document.getElementById("save-plant").textContent = copy.save;
 }
 
 function showView(name) {
@@ -278,39 +479,51 @@ function renderSessionBar() {
   if (!activeUser) {
     return;
   }
+  const copy = t().session;
   const eyebrow = elements.sessionBarEl.querySelector(".eyebrow");
   if (eyebrow) {
-    eyebrow.textContent = "Current garden";
+    eyebrow.textContent = copy.eyebrow;
   }
-  elements.sessionUserNameEl.textContent = `${activeUser.name}'s garden`;
+  elements.sessionUserNameEl.textContent = state.language === "zh"
+    ? `${activeUser.name}${copy.gardenSuffix}`
+    : `${activeUser.name}'s ${copy.gardenSuffix}`;
   elements.sessionUserEmailEl.textContent = activeUser.email || "";
-  elements.switchProfileButton.textContent = "Switch";
+  elements.switchProfileButton.textContent = copy.switch;
   elements.switchProfileButton.dataset.mode = "switch";
 }
 
 function renderAuthView() {
+  const authCopy = t().auth;
   const title = state.authNeedsName
-    ? (state.sessionClaimable ? "Claim your garden" : "Create your garden")
-    : "Open your garden";
-  const copy = state.authNeedsName
+    ? (state.sessionClaimable ? authCopy.claimTitle : authCopy.createTitle)
+    : authCopy.openTitle;
+  const bodyCopy = state.authNeedsName
     ? (state.sessionClaimable
-      ? "This email is new here, so add your name once to claim the shared garden. Your password will protect it going forward."
-      : "This email is new here, so add your name once to create a new garden.")
-    : "Sign in with your email and garden password. If this is a new garden, we’ll ask for your name next.";
+      ? authCopy.claimCopy
+      : authCopy.createCopy)
+    : authCopy.openCopy;
   const remembered = state.rememberedUser;
 
+  elements.authEyebrowEl.textContent = authCopy.eyebrow;
   elements.authTitleEl.textContent = title;
-  elements.authCopyEl.textContent = copy;
+  elements.authCopyEl.textContent = bodyCopy;
+  elements.authNameLabelEl.textContent = authCopy.name;
+  elements.authNameInput.placeholder = authCopy.namePlaceholder;
+  elements.authEmailLabelEl.textContent = authCopy.email;
+  elements.authEmailInput.placeholder = authCopy.emailPlaceholder;
+  elements.authPasswordLabelEl.textContent = authCopy.password;
+  elements.authPasswordInput.placeholder = authCopy.passwordPlaceholder;
   elements.authNameFieldEl.hidden = !state.authNeedsName;
   elements.authNameInput.required = state.authNeedsName;
   if (!state.authNeedsName) {
     elements.authNameInput.value = "";
   }
   elements.authSubmitButton.disabled = state.authSubmitting;
-  elements.authSubmitButton.textContent = state.authSubmitting ? "Opening..." : "Continue";
+  elements.authSubmitButton.textContent = state.authSubmitting ? authCopy.opening : authCopy.continue;
   if (remembered && !elements.authEmailInput.value) {
     elements.authEmailInput.value = remembered.email;
   }
+  renderLanguageOptions();
   renderSessionBar();
   elements.tabBarEl.hidden = true;
   showView("auth");
@@ -670,7 +883,7 @@ async function fetchIntakeSuggestion(signature) {
 function handleIdentifyPlantClick() {
   const signature = intakeSignature();
   if (!signature) {
-    showToast("Add a photo first");
+    showToast(t().toast.addPhotoFirst);
     return;
   }
   void fetchIntakeSuggestion(signature);
@@ -686,6 +899,7 @@ function renderCurrentView() {
   setActiveTab();
   if (state.route.name === "add") {
     showView("add");
+    renderAddStaticCopy();
     renderAddView({
       state,
       elements,
@@ -695,6 +909,7 @@ function renderCurrentView() {
       syncIntakePlantNameFromSuggestion: (suggestion) =>
         syncIntakePlantNameFromSuggestion(state, suggestion),
       onOpenPhotoPicker: openAddPhotoPicker,
+      t: t(),
     });
     return;
   }
@@ -705,6 +920,7 @@ function renderCurrentView() {
       state,
       gardenViewEl: elements.gardenViewEl,
       onOpenPlant: handleOpenPlant,
+      t: t(),
     });
     return;
   }
@@ -806,7 +1022,7 @@ async function handleAddPlantSubmit(event) {
   const customNameValue = elements.plantNameInput?.value?.trim() || "";
 
   if (!photoFile) {
-    showToast("Take a photo first");
+    showToast(t().toast.takePhotoFirst);
     return;
   }
 
@@ -819,20 +1035,20 @@ async function handleAddPlantSubmit(event) {
   const activeDiagnosis = hasFreshSuggestion ? state.intakeDiagnosis : null;
   const activeUploadToken = hasFreshSuggestion ? state.intakeUploadToken : "";
   if (!hasFreshSuggestion) {
-    showToast("Tap Identify plant first");
+    showToast(t().toast.identifyFirst);
     return;
   }
   const resolvedName = customNameValue || (hasFreshSuggestion ? activeSuggestion?.name || "" : "");
   if (!resolvedName || isUnknownSuggestionName(resolvedName)) {
     setPlantNameEditing(true);
-    showToast("Name this plant before saving");
+    showToast(t().toast.namePlant);
     return;
   }
   if (activeUploadToken) {
     payload.append("upload_token", activeUploadToken);
     await appendThumbnail(payload, photoFile);
   } else {
-    showToast("Please identify this plant again");
+    showToast(t().toast.reidentify);
     return;
   }
   payload.append("name", resolvedName);
@@ -851,7 +1067,7 @@ async function handleAddPlantSubmit(event) {
 
   const saveButton = document.getElementById("save-plant");
   saveButton.disabled = true;
-  saveButton.textContent = "Saving...";
+  saveButton.textContent = t().add.saving;
 
   try {
     const data = await createPlantRequest(payload);
@@ -861,13 +1077,13 @@ async function handleAddPlantSubmit(event) {
     resetIntakeSuggestion(state);
     resetPurchaseDateInput();
     renderCurrentView();
-    showToast(`Saved ${data.plant.name}`);
+    showToast(`${t().toast.savedPrefix} ${data.plant.name}`);
     setRoute(`/plant/${encodeURIComponent(data.plant.id)}`, syncRoute);
   } catch (error) {
-    showToast(error.message || "Could not save plant");
+    showToast(error.message || t().toast.saveError);
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = "Save plant";
+    saveButton.textContent = t().add.save;
   }
 }
 
@@ -966,15 +1182,15 @@ async function handleAuthSubmit(event) {
   const email = elements.authEmailInput?.value?.trim() || "";
   const password = elements.authPasswordInput?.value || "";
   if (!email) {
-    showToast("Add your email first");
+    showToast(t().toast.authEmail);
     return;
   }
   if (password.length < 8) {
-    showToast("Use at least 8 characters");
+    showToast(t().toast.authPassword);
     return;
   }
   if (state.authNeedsName && !name) {
-    showToast("Add your name to finish opening this garden");
+    showToast(t().toast.authName);
     return;
   }
 
@@ -1039,6 +1255,12 @@ function handleDetailPhotoPreview(event) {
 }
 
 function bindStaticEvents() {
+  elements.languageButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setLanguage(button.getAttribute("data-language"));
+      renderCurrentView();
+    });
+  });
   elements.authForm?.addEventListener("submit", handleAuthSubmit);
   elements.switchProfileButton?.addEventListener("click", () => {
     if (elements.switchProfileButton.dataset.mode === "resume") {
@@ -1096,6 +1318,7 @@ function bindStaticEvents() {
 }
 
 async function boot() {
+  setLanguage(readStoredLanguage());
   bindStaticEvents();
   resetPurchaseDateInput();
   void registerServiceWorker();

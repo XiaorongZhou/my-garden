@@ -4,6 +4,7 @@ export function createInitialState() {
   return {
     currentUser: null,
     rememberedUser: null,
+    language: "en",
     sessionClaimable: false,
     authSubmitting: false,
     authNeedsName: false,

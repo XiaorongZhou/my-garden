@@ -11,6 +11,29 @@ async function parseJson(response, fallbackMessage) {
   return data;
 }
 
+const DEFAULT_TIMEOUT_MS = 30000;
+const AI_TIMEOUT_MS = 120000;
+const AUTH_TIMEOUT_MS = 20000;
+
+async function fetchWithTimeout(resource, options = {}) {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(resource, {
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 let currentSessionToken = "";
 
 function authHeaders(extraHeaders = {}) {
@@ -28,25 +51,27 @@ export function setApiSessionToken(sessionToken) {
 }
 
 export async function fetchSession() {
-  const response = await fetch("/api/session", {
+  const response = await fetchWithTimeout("/api/session", {
     headers: authHeaders(),
+    timeoutMs: AUTH_TIMEOUT_MS,
   });
   return parseJson(response, "Could not load your garden profile.");
 }
 
 export async function createSessionRequest(payload) {
-  const response = await fetch("/api/session", {
+  const response = await fetchWithTimeout("/api/session", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+    timeoutMs: AUTH_TIMEOUT_MS,
   });
   return parseJson(response, "Could not open your garden.");
 }
 
 export async function fetchPlants() {
-  const response = await fetch("/api/plants", {
+  const response = await fetchWithTimeout("/api/plants", {
     headers: authHeaders(),
   });
   const data = await parseJson(response, "Could not load plants.");
@@ -54,7 +79,7 @@ export async function fetchPlants() {
 }
 
 export async function fetchPlantDetail(plantId) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}`, {
     headers: authHeaders(),
   });
   if (response.status === 404) {
@@ -66,7 +91,7 @@ export async function fetchPlantDetail(plantId) {
 
 export async function fetchPlantChat(plantId, checkinId = "") {
   const suffix = checkinId ? `?checkin_id=${encodeURIComponent(checkinId)}` : "";
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/chat${suffix}`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}/chat${suffix}`, {
     headers: authHeaders(),
   });
   const data = await parseJson(response, "Could not load plant chat.");
@@ -80,7 +105,7 @@ export async function fetchPlantChat(plantId, checkinId = "") {
 }
 
 export async function patchPlant(plantId, patch) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}`, {
     method: "PATCH",
     headers: authHeaders({
       "Content-Type": "application/json",
@@ -92,7 +117,7 @@ export async function patchPlant(plantId, patch) {
 }
 
 export async function deletePlantRequest(plantId) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
@@ -100,16 +125,17 @@ export async function deletePlantRequest(plantId) {
 }
 
 export async function requestPlantIdentityPreview(payload) {
-  const response = await fetch("/api/plant-identity-preview", {
+  const response = await fetchWithTimeout("/api/plant-identity-preview", {
     method: "POST",
     headers: authHeaders(),
     body: payload,
+    timeoutMs: AI_TIMEOUT_MS,
   });
   return parseJson(response, "Could not identify this plant.");
 }
 
 export async function createPlantRequest(payload) {
-  const response = await fetch("/api/plants", {
+  const response = await fetchWithTimeout("/api/plants", {
     method: "POST",
     headers: authHeaders(),
     body: payload,
@@ -118,16 +144,17 @@ export async function createPlantRequest(payload) {
 }
 
 export async function createCheckinRequest(plantId, payload) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/checkins`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}/checkins`, {
     method: "POST",
     headers: authHeaders(),
     body: payload,
+    timeoutMs: AI_TIMEOUT_MS,
   });
   return parseJson(response, "Could not save check-in.");
 }
 
 export async function createWateringRequest(plantId, payload = {}) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/waterings`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}/waterings`, {
     method: "POST",
     headers: authHeaders({
       "Content-Type": "application/json",
@@ -138,7 +165,7 @@ export async function createWateringRequest(plantId, payload = {}) {
 }
 
 export async function setWateringRequest(plantId, payload = {}) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/waterings/toggle`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}/waterings/toggle`, {
     method: "POST",
     headers: authHeaders({
       "Content-Type": "application/json",
@@ -149,18 +176,19 @@ export async function setWateringRequest(plantId, payload = {}) {
 }
 
 export async function createPlantChatMessageRequest(plantId, payload) {
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/chat/messages`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}/chat/messages`, {
     method: "POST",
     headers: authHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(payload),
+    timeoutMs: AI_TIMEOUT_MS,
   });
   return parseJson(response, "Could not send follow-up.");
 }
 
 export async function deleteCheckinRequest(checkinId) {
-  const response = await fetch(`/api/checkins/${encodeURIComponent(checkinId)}`, {
+  const response = await fetchWithTimeout(`/api/checkins/${encodeURIComponent(checkinId)}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
@@ -169,7 +197,7 @@ export async function deleteCheckinRequest(checkinId) {
 
 export async function deleteWateringRequest(plantId, wateredOn = "") {
   const suffix = wateredOn ? `?date=${encodeURIComponent(wateredOn)}` : "";
-  const response = await fetch(`/api/plants/${encodeURIComponent(plantId)}/waterings${suffix}`, {
+  const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}/waterings${suffix}`, {
     method: "DELETE",
     headers: authHeaders(),
   });

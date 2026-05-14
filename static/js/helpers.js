@@ -265,14 +265,17 @@ export function historyDisclosureMarkup(checkin, plant) {
   `;
 }
 
-export function placeholderPhotoMarkup(buttonId) {
+export function placeholderPhotoMarkup(buttonId, options = {}) {
+  const label = String(options.label ?? "Photo preview").trim();
+  const buttonLabel = String(options.buttonLabel || "").trim();
   return `
     <div class="intake-placeholder intake-placeholder-action">
-      <p class="eyebrow">Photo preview</p>
+      ${label ? `<p class="eyebrow">${escapeHtml(label)}</p>` : ""}
       <button id="${escapeHtml(buttonId)}" class="ghost-button intake-placeholder-button icon-photo-button" type="button" aria-label="Add photo">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M8 6.5 9.4 4h5.2L16 6.5h2.2A2.8 2.8 0 0 1 21 9.3v7.4a2.8 2.8 0 0 1-2.8 2.8H5.8A2.8 2.8 0 0 1 3 16.7V9.3a2.8 2.8 0 0 1 2.8-2.8Zm4 3.1a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 1.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"></path>
         </svg>
+        ${buttonLabel ? `<span>${escapeHtml(buttonLabel)}</span>` : ""}
       </button>
     </div>
   `;

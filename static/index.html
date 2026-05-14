@@ -18,8 +18,12 @@
         <div class="panel form-panel auth-panel">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Your garden</p>
+              <p id="auth-eyebrow" class="eyebrow">Your garden</p>
               <h2 id="auth-title">Open your garden</h2>
+            </div>
+            <div class="language-switcher" aria-label="Language">
+              <button id="language-en" class="language-option active" type="button" data-language="en">EN</button>
+              <button id="language-zh" class="language-option" type="button" data-language="zh">中文</button>
             </div>
           </div>
           <p id="auth-copy" class="support-copy">
@@ -27,15 +31,15 @@
           </p>
           <form id="auth-form" class="stack-form">
             <label id="auth-name-field" hidden>
-              <span>Your name</span>
+              <span id="auth-name-label">Your name</span>
               <input id="auth-name" name="name" type="text" autocomplete="name" placeholder="Alicia" required />
             </label>
             <label>
-              <span>Email</span>
+              <span id="auth-email-label">Email</span>
               <input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
             </label>
             <label>
-              <span>Password</span>
+              <span id="auth-password-label">Password</span>
               <input id="auth-password" name="password" type="password" autocomplete="current-password" placeholder="At least 8 characters" minlength="8" required />
             </label>
             <button id="auth-submit" class="primary-button" type="submit">Continue</button>
@@ -54,8 +58,8 @@
         <div class="panel form-panel">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">New plant</p>
-              <h2>Describe your plant</h2>
+              <p id="add-eyebrow" class="eyebrow">New plant</p>
+              <h2 id="add-title">Describe your plant</h2>
             </div>
           </div>
           <form id="add-plant-form" class="stack-form">
@@ -100,7 +104,7 @@
               </div>
             </div>
             <label>
-              <span>Where it lives</span>
+              <span id="plant-location-label">Where it lives</span>
               <input
                 id="plant-location"
                 name="location"
@@ -112,7 +116,7 @@
             </label>
             <datalist id="room-options"></datalist>
             <label>
-              <span>Purchase date</span>
+              <span id="plant-purchase-date-label">Purchase date</span>
               <input id="plant-purchase-date" name="purchase_date" type="date" />
             </label>
             <button id="save-plant" class="primary-button" type="submit">Save plant</button>

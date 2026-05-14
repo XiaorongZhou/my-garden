@@ -16,6 +16,7 @@ export function renderAddView({
   setPlantNameEditing,
   syncIntakePlantNameFromSuggestion,
   onOpenPhotoPicker,
+  t,
 }) {
   const {
     intakePhotoInput,
@@ -42,19 +43,19 @@ export function renderAddView({
   const currentSignature = intakeSignature();
   const suggestion = state.intakeSuggestionLoading
     ? {
-        name: "Looking closely...",
+        name: t.add.loadingName,
         chinese_name: "",
-        species: "Identifying your plant",
-        caption: "We’re identifying the plant and drafting a first read before you save.",
+        species: t.add.loadingSpecies,
+        caption: t.add.loadingCaption,
         confidence: "",
         source: "loading",
       }
     : file && state.intakeSuggestionSignature !== currentSignature
       ? {
-          name: "Ready when you are",
+          name: t.add.readyName,
           chinese_name: "",
-          species: "Photo attached",
-          caption: "Tap Identify plant to preview the plant name and first read before saving.",
+          species: t.add.readySpecies,
+          caption: t.add.readyCaption,
           confidence: "",
           source: "ready",
         }
@@ -84,13 +85,13 @@ export function renderAddView({
     suggestedDiagnosisStatusEl.className = `status-pill ${escapeHtml(diagnosis.health_status)}`;
     suggestedDiagnosisStatusEl.textContent = statusLabel(diagnosis.health_status);
     suggestedDiagnosisTitleEl.textContent = diagnosis.diagnosis_title;
-    suggestedDiagnosisSummaryEl.textContent = diagnosis.diagnosis_summary || "Initial read saved and ready to use when you save this plant.";
+    suggestedDiagnosisSummaryEl.textContent = diagnosis.diagnosis_summary || t.add.initialReadFallback;
   }
   if (suggestedTipEl) {
     suggestedTipEl.hidden = !tip;
   }
   if (suggestedTipTitleEl) {
-    suggestedTipTitleEl.textContent = tip?.title || "Care tip";
+    suggestedTipTitleEl.textContent = tip?.title || t.add.careTip;
   }
   if (suggestedTipBodyEl) {
     suggestedTipBodyEl.textContent = tip?.body || "";
@@ -99,22 +100,25 @@ export function renderAddView({
   if (plantNameInput) {
     plantNameInput.value = state.intakePlantName;
     plantNameInput.placeholder = isUnknownSuggestionName(suggestion.name)
-      ? "Give this plant a name before saving"
-      : "Edit the plant name before saving";
+      ? t.add.nameUnknownPlaceholder
+      : t.add.nameEditPlaceholder;
   }
   setPlantNameEditing(state.intakePlantNameEditing);
 
   intakePreviewEl.innerHTML = state.intakePreviewUrl
     ? `<div class="preview-image"><img src="${escapeHtml(state.intakePreviewUrl)}" alt="Preview of your new plant photo" /></div>`
-    : placeholderPhotoMarkup("empty-add-photo");
+    : placeholderPhotoMarkup("empty-add-photo", {
+        label: "",
+        buttonLabel: t.add.photoButton,
+      });
 
   if (identifyPlantButton) {
     identifyPlantButton.disabled = !file || state.intakeSuggestionLoading;
     identifyPlantButton.textContent = state.intakeSuggestionLoading
-      ? "Identifying..."
+      ? t.add.identifying
       : file && state.intakeSuggestionSignature === currentSignature
-        ? "Re-identify plant"
-        : "Identify plant";
+        ? t.add.reIdentify
+        : t.add.identify;
   }
 
   if (suggestionCardEl) {

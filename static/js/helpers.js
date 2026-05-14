@@ -29,7 +29,12 @@ export function initialsFor(name) {
 
 export function formatDate(value) {
   if (!value) return "";
-  const date = new Date(value);
+  const rawValue = String(value).trim();
+  const date = new Date(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(rawValue)
+      ? rawValue
+      : value
+  );
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -63,6 +68,16 @@ export function todayInputValue() {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+export function localDateTimeValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }
 
 export function buildWateringCalendar(wateringDates, referenceDate = new Date()) {
@@ -143,19 +158,6 @@ export function photoMarkup(url, alt, fallback) {
   return `<div class="empty-photo">${escapeHtml(fallback)}</div>`;
 }
 
-export function thumbnailUrlFor(photoUrl) {
-  const url = String(photoUrl || "").trim();
-  if (!url.startsWith("/uploads/")) {
-    return url || "";
-  }
-  const filename = url.split("/").pop() || "";
-  if (!filename || filename.startsWith("thumb-")) {
-    return url;
-  }
-  const stem = filename.replace(/\.[^.]+$/, "");
-  return `/uploads/thumb-${encodeURIComponent(stem)}.jpg`;
-}
-
 export async function createPhotoThumbnail(file, { maxSize = 360, quality = 0.72 } = {}) {
   if (!file || !String(file.type || "").startsWith("image/")) {
     return null;
@@ -217,7 +219,7 @@ export function historyDisclosureMarkup(checkin, plant) {
     <details class="history-card history-disclosure">
       <summary class="history-summary">
         <div class="history-photo">
-          ${photoMarkup(checkin.thumbnail_url || thumbnailUrlFor(checkin.photo_url), `${plant.name} check-in`, initialsFor(plant.name))}
+          ${photoMarkup(checkin.thumbnail_url || checkin.photo_url, `${plant.name} check-in`, initialsFor(plant.name))}
         </div>
         <div class="history-summary-main">
           <div class="history-title">

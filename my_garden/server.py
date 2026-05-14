@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .config import STATIC_DIR, UPLOAD_DIR
+from .config import SESSION_TTL_DAYS, STATIC_DIR, UPLOAD_DIR
 from .data import (
     create_user_session,
     create_or_claim_user,
@@ -70,13 +71,38 @@ from .plant_ai import (
     normalize_diagnosis_payload,
 )
 
+LOCAL_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?")
+SESSION_COOKIE_NAME = "my_garden_session"
+
+
+def client_created_at_or_now(value: object) -> str:
+    candidate = str(value or "").strip()
+    if LOCAL_TIMESTAMP_RE.fullmatch(candidate):
+        return candidate if len(candidate) == 19 else f"{candidate}:00"
+    return now_iso()
+
+
+def session_cookie_header(session_token: str) -> str:
+    max_age = max(1, SESSION_TTL_DAYS) * 24 * 60 * 60
+    return (
+        f"{SESSION_COOKIE_NAME}={session_token}; Path=/; Max-Age={max_age}; "
+        "SameSite=Lax; HttpOnly"
+    )
+
 
 class MyGardenHandler(BaseHTTPRequestHandler):
-    def _send_json(self, payload: dict[str, object], status: int = 200) -> None:
+    def _send_json(
+        self,
+        payload: dict[str, object],
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -98,7 +124,17 @@ class MyGardenHandler(BaseHTTPRequestHandler):
         auth_header = str(self.headers.get("Authorization") or "").strip()
         if auth_header.lower().startswith("bearer "):
             return auth_header[7:].strip()
-        return str(self.headers.get("X-My-Garden-Session") or "").strip()
+        header_token = str(self.headers.get("X-My-Garden-Session") or "").strip()
+        if header_token:
+            return header_token
+        cookie_header = str(self.headers.get("Cookie") or "")
+        if cookie_header:
+            cookie = SimpleCookie()
+            cookie.load(cookie_header)
+            morsel = cookie.get(SESSION_COOKIE_NAME)
+            if morsel is not None:
+                return str(morsel.value or "").strip()
+        return ""
 
     def _resolve_current_user(self, connection, *, required: bool = True):
         token = self._current_session_token()
@@ -270,7 +306,11 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                         password_was_set=password_was_set,
                     )
                     connection.commit()
-                return self._send_json(payload_out, status=201)
+                return self._send_json(
+                    payload_out,
+                    status=201,
+                    headers={"Set-Cookie": session_cookie_header(session_token)},
+                )
 
             if path == "/api/plant-identity-preview":
                 fields, files = parse_multipart(self)
@@ -329,6 +369,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     raw_diagnosis = payload.get("diagnosis_payload") or payload.get("diagnosis")
                     raw_tip = payload.get("tip_payload") or payload.get("tip")
                     raw_upload_token = payload.get("upload_token") or ""
+                    client_created_at = payload.get("client_created_at")
                 else:
                     fields, files = parse_multipart(self)
                     file_payload = pick_file(files)
@@ -363,6 +404,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                         )
                     raw_diagnosis = fields.get("diagnosis_payload") or ""
                     raw_tip = fields.get("tip_payload") or ""
+                    client_created_at = fields.get("client_created_at")
 
                 if not photo_url and raw_upload_token:
                     photo_url = photo_url_from_upload_token(str(raw_upload_token))
@@ -408,7 +450,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
 
                 with get_conn() as connection:
                     plant_id = make_plant_id(connection)
-                    created_at = now_iso()
+                    created_at = client_created_at_or_now(client_created_at)
                     create_plant(
                         connection,
                         plant_id=plant_id,
@@ -466,9 +508,11 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                     note = str(payload.get("note") or "").strip()
                     photo_url = None
                     file_payload = None
+                    client_created_at = payload.get("client_created_at")
                 else:
                     fields, files = parse_multipart(self)
                     note = str(fields.get("note") or "").strip()
+                    client_created_at = fields.get("client_created_at")
                     file_payload = pick_file(files)
                     thumbnail_payload = pick_file(files, field_names=("thumbnail",))
                     photo_url = store_upload(file_payload, prefix=plant_id) if file_payload else None
@@ -495,7 +539,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                         photo_bytes=bytes(file_payload.get("bytes") or b"") if file_payload else None,
                     )
                     checkin_id = f"{plant_id}-{uuid.uuid4().hex[:10]}"
-                    created_at = now_iso()
+                    created_at = client_created_at_or_now(client_created_at)
                     create_checkin(
                         connection,
                         checkin_id=checkin_id,

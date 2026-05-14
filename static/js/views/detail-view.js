@@ -292,7 +292,10 @@ export function renderCheckinView({
 
   const previewMarkup = state.detailPreviewUrl
     ? `<div class="preview-image"><img src="${escapeHtml(state.detailPreviewUrl)}" alt="Preview of your new plant check-in photo" /></div>`
-    : placeholderPhotoMarkup("empty-checkin-photo");
+    : placeholderPhotoMarkup("empty-checkin-photo", {
+        label: "",
+        buttonLabel: "Take photo",
+      });
 
   detailViewEl.innerHTML = `
     <div class="detail-stack">
@@ -348,6 +351,9 @@ export function updateDetailPreviewSlot({
   if (!slot) return;
   slot.innerHTML = state.detailPreviewUrl
     ? `<div class="preview-image"><img src="${escapeHtml(state.detailPreviewUrl)}" alt="Preview of your new plant check-in photo" /></div>`
-    : placeholderPhotoMarkup("empty-checkin-photo");
+    : placeholderPhotoMarkup("empty-checkin-photo", {
+        label: "",
+        buttonLabel: "Take photo",
+      });
   document.getElementById("empty-checkin-photo")?.addEventListener("click", onOpenCheckinPhotoPicker);
 }

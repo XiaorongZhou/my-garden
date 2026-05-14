@@ -13,7 +13,7 @@ async function parseJson(response, fallbackMessage) {
 
 const DEFAULT_TIMEOUT_MS = 30000;
 const AI_TIMEOUT_MS = 120000;
-const AUTH_TIMEOUT_MS = 20000;
+const AUTH_TIMEOUT_MS = 60000;
 
 async function fetchWithTimeout(resource, options = {}) {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options;
@@ -26,7 +26,7 @@ async function fetchWithTimeout(resource, options = {}) {
     });
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error("Request timed out. Please try again.");
+      throw new Error(`Request to ${resource} timed out. Please try again.`);
     }
     throw error;
   } finally {

@@ -12,6 +12,8 @@ from pathlib import Path
 from .config import STATIC_DIR, UPLOAD_DIR
 from .errors import ApiError
 
+MIN_USABLE_THUMBNAIL_BYTES = 8_192
+
 
 def decode_body(handler: BaseHTTPRequestHandler) -> bytes:
     length = int(handler.headers.get("Content-Length", "0"))
@@ -119,7 +121,11 @@ def thumbnail_url_for(photo_url: str | None) -> str | None:
     if not thumbnail_name:
         return photo_url
     thumbnail_path = UPLOAD_DIR / thumbnail_name
-    if thumbnail_path.exists() and thumbnail_path.is_file():
+    if (
+        thumbnail_path.exists()
+        and thumbnail_path.is_file()
+        and thumbnail_path.stat().st_size >= MIN_USABLE_THUMBNAIL_BYTES
+    ):
         return f"/uploads/{thumbnail_name}"
     return photo_url
 

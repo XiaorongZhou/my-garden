@@ -357,6 +357,11 @@ html:lang(zh-CN) h3 {
   backdrop-filter: blur(16px);
 }
 
+.form-panel {
+  display: grid;
+  gap: 20px;
+}
+
 #add-view .form-panel,
 .auth-panel {
   background:
@@ -383,6 +388,10 @@ html:lang(zh-CN) h3 {
 
 #garden-view .panel > .section-heading {
   margin-bottom: 16px;
+}
+
+#add-view .section-heading {
+  margin-bottom: 2px;
 }
 
 .detail-topbar {
@@ -518,6 +527,51 @@ input:focus::placeholder {
   box-shadow: none;
 }
 
+.checkin-composer {
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.checkin-composer .intake-placeholder {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.checkin-composer .intake-placeholder-action {
+  min-height: 156px;
+  align-content: center;
+  justify-items: center;
+  border: 0;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.88), transparent 42%),
+    linear-gradient(150deg, rgba(223, 233, 216, 0.52), rgba(244, 232, 206, 0.2));
+}
+
+.checkin-composer .icon-photo-button {
+  position: static;
+  width: auto;
+  min-width: 0;
+  min-height: 54px;
+  padding: 0 18px;
+  gap: 9px;
+  transform: none;
+  border-radius: 999px;
+  border-color: rgba(61, 107, 77, 0.14);
+  background: rgba(255, 252, 247, 0.96);
+  color: var(--leaf);
+  box-shadow: 0 12px 24px rgba(61, 107, 77, 0.12);
+}
+
+.checkin-composer .icon-photo-button span {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
 #add-view .intake-placeholder {
   padding: 0;
   border: 0;
@@ -631,6 +685,20 @@ input:focus::placeholder {
 
 .plant-hero-copy > .detail-meta {
   margin-top: 4px;
+}
+
+.checkin-card > .section-heading {
+  margin-bottom: 6px;
+}
+
+.checkin-card > .detail-secondary-name {
+  margin-top: 8px;
+  margin-bottom: 6px;
+}
+
+.checkin-card > .detail-meta {
+  margin-bottom: 14px;
+  line-height: 1.35;
 }
 
 .latest-followup-button {
@@ -1146,6 +1214,10 @@ textarea {
 
 .checkin-composer .composer-body textarea:focus {
   box-shadow: none;
+}
+
+.checkin-form > .primary-button {
+  margin-top: 8px;
 }
 
 .history-card {

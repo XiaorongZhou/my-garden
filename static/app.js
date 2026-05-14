@@ -3,6 +3,7 @@ import {
   escapeHtml,
   formatDateOnly,
   isUnknownSuggestionName,
+  localDateTimeValue,
   normalizeDiagnosis,
   normalizeSuggestion,
   normalizeTip,
@@ -1027,6 +1028,7 @@ async function handleAddPlantSubmit(event) {
   }
 
   const payload = new FormData();
+  payload.append("client_created_at", localDateTimeValue());
   if (locationValue) {
     payload.append("location", locationValue);
   }
@@ -1110,6 +1112,7 @@ async function handleCheckinSubmit(event) {
   if (noteValue) {
     payload.append("note", noteValue);
   }
+  payload.append("client_created_at", localDateTimeValue());
 
   submitButton.disabled = true;
   submitButton.textContent = "Diagnosing...";

@@ -12,6 +12,11 @@ My Garden is a mobile-first PWA for plant care. Users can:
 
 The app is intentionally simple and personal. Favor clear, calm mobile UI over feature density.
 
+## Working Preferences
+
+- If a validated change set grows beyond roughly 200 lines of code, proactively commit and push it unless the user explicitly asks not to.
+- Keep commits small enough to review, but do not leave large polished work uncommitted at handoff.
+
 ## Repo And Runtime
 
 - Repo path: `/Users/alicia/Documents/Playground/my-garden`

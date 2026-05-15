@@ -9,6 +9,9 @@ export function routeFromHash(hash = window.location.hash) {
   if (path === "garden") {
     return { name: "garden" };
   }
+  if (path === "admin") {
+    return { name: "admin" };
+  }
   const checkinMatch = path.match(/^plant\/(.+)\/checkin$/);
   if (checkinMatch) {
     return { name: "checkin", plantId: decodeURIComponent(checkinMatch[1]) };

@@ -8,6 +8,11 @@ DB_PATH = Path(os.environ.get("MY_GARDEN_DB_PATH", str(ROOT / "my_garden.db"))).
 STATIC_DIR = ROOT / "static"
 UPLOAD_DIR = Path(os.environ.get("MY_GARDEN_UPLOAD_DIR", str(ROOT / "uploads"))).expanduser()
 SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "30"))
+ADMIN_EMAILS = {
+    email.strip().lower()
+    for email in os.environ.get("MY_GARDEN_ADMIN_EMAILS", "").split(",")
+    if email.strip()
+}
 AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "30"))
 AI_IDENTITY_DAILY_LIMIT = int(os.environ.get("AI_IDENTITY_DAILY_LIMIT", "10"))
 AI_CHECKIN_DAILY_LIMIT = int(os.environ.get("AI_CHECKIN_DAILY_LIMIT", "10"))

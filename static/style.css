@@ -100,6 +100,13 @@ button {
   font-size: 0.82rem;
 }
 
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .hero,
 .panel,
 .detail-shell,
@@ -1348,6 +1355,139 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .empty-card {
   place-items: start;
+}
+
+.admin-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-heading {
+  align-items: center;
+}
+
+.admin-heading .ghost-button {
+  min-height: 38px;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-stat-card,
+.admin-section,
+.admin-garden-row {
+  border: 1px solid rgba(73, 74, 53, 0.1);
+  background: rgba(255, 252, 247, 0.76);
+}
+
+.admin-stat-card {
+  display: grid;
+  gap: 4px;
+  min-height: 118px;
+  padding: 14px;
+  border-radius: 20px;
+}
+
+.admin-stat-card .eyebrow {
+  margin-bottom: 0;
+  font-size: 0.68rem;
+}
+
+.admin-stat-card h3 {
+  font-size: 1.55rem;
+}
+
+.admin-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 22px;
+}
+
+.admin-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-day-list,
+.admin-garden-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-day-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-day-row p {
+  margin: 0;
+}
+
+.admin-day-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(61, 107, 77, 0.09);
+}
+
+.admin-day-bar span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #9fc990 0%, var(--leaf) 100%);
+}
+
+.admin-day-count {
+  text-align: right;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.admin-day-detail {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.admin-garden-row {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+}
+
+.admin-garden-row h3 {
+  font-size: 1.08rem;
+}
+
+.admin-activity-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.admin-garden-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-garden-counts span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(223, 233, 216, 0.58);
+  color: var(--leaf);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .chat-shell {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .auth import (
     hash_password,
@@ -1190,6 +1190,255 @@ def list_chat_message_rows(
 def latest_checkin_row(connection: sqlite3.Connection, plant_id: str) -> sqlite3.Row | None:
     rows = list_checkin_rows(connection, plant_id)
     return rows[0] if rows else None
+
+
+def first_registered_user_id(connection: sqlite3.Connection) -> str:
+    row = connection.execute(
+        """
+        SELECT id
+        FROM users
+        WHERE is_claimable = 0
+          AND COALESCE(TRIM(normalized_email), '') != ''
+        ORDER BY datetime(created_at) ASC, id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    return str(row["id"]) if row is not None else ""
+
+
+def _scalar_int(connection: sqlite3.Connection, query: str, params: tuple[object, ...] = ()) -> int:
+    row = connection.execute(query, params).fetchone()
+    if row is None:
+        return 0
+    return int(row[0] or 0)
+
+
+def _daily_count_map(
+    connection: sqlite3.Connection,
+    query: str,
+    params: tuple[object, ...],
+) -> dict[str, int]:
+    return {
+        str(row["day"]): int(row["count"] or 0)
+        for row in connection.execute(query, params).fetchall()
+    }
+
+
+def admin_metrics(connection: sqlite3.Connection) -> dict[str, object]:
+    today = datetime.now().date()
+    start_day = today - timedelta(days=13)
+    day_keys = [(start_day + timedelta(days=index)).isoformat() for index in range(14)]
+    last_7_cutoff = (datetime.now() - timedelta(days=7)).isoformat(timespec="seconds")
+    start_day_text = start_day.isoformat()
+
+    daily_sources = {
+        "plants": _daily_count_map(
+            connection,
+            """
+            SELECT date(created_at) AS day, COUNT(*) AS count
+            FROM plants
+            WHERE date(created_at) >= date(?)
+            GROUP BY date(created_at)
+            """,
+            (start_day_text,),
+        ),
+        "checkins": _daily_count_map(
+            connection,
+            """
+            SELECT date(created_at) AS day, COUNT(*) AS count
+            FROM checkins
+            WHERE date(created_at) >= date(?)
+            GROUP BY date(created_at)
+            """,
+            (start_day_text,),
+        ),
+        "waterings": _daily_count_map(
+            connection,
+            """
+            SELECT date(created_at) AS day, COUNT(*) AS count
+            FROM waterings
+            WHERE date(created_at) >= date(?)
+            GROUP BY date(created_at)
+            """,
+            (start_day_text,),
+        ),
+        "followups": _daily_count_map(
+            connection,
+            """
+            SELECT date(created_at) AS day, COUNT(*) AS count
+            FROM chat_messages
+            WHERE role = 'user'
+              AND date(created_at) >= date(?)
+            GROUP BY date(created_at)
+            """,
+            (start_day_text,),
+        ),
+        "ai_calls": _daily_count_map(
+            connection,
+            """
+            SELECT usage_date AS day, COALESCE(SUM(count), 0) AS count
+            FROM ai_usage
+            WHERE date(usage_date) >= date(?)
+            GROUP BY usage_date
+            """,
+            (start_day_text,),
+        ),
+    }
+    daily = [
+        {
+            "date": day,
+            "plants": daily_sources["plants"].get(day, 0),
+            "checkins": daily_sources["checkins"].get(day, 0),
+            "waterings": daily_sources["waterings"].get(day, 0),
+            "followups": daily_sources["followups"].get(day, 0),
+            "ai_calls": daily_sources["ai_calls"].get(day, 0),
+        }
+        for day in day_keys
+    ]
+
+    active_gardens_7d = _scalar_int(
+        connection,
+        """
+        WITH activity AS (
+            SELECT id AS user_id, updated_at AS activity_at FROM users
+            UNION ALL SELECT user_id, updated_at FROM plants
+            UNION ALL SELECT p.user_id, c.created_at FROM checkins c JOIN plants p ON p.id = c.plant_id
+            UNION ALL SELECT p.user_id, w.created_at FROM waterings w JOIN plants p ON p.id = w.plant_id
+            UNION ALL SELECT user_id, created_at FROM chat_messages
+            UNION ALL SELECT user_id, updated_at FROM ai_usage
+            UNION ALL SELECT user_id, last_seen_at FROM user_sessions
+        )
+        SELECT COUNT(DISTINCT u.id)
+        FROM users u
+        JOIN activity a ON a.user_id = u.id
+        WHERE u.is_claimable = 0
+          AND datetime(a.activity_at) >= datetime(?)
+        """,
+        (last_7_cutoff,),
+    )
+
+    garden_rows = connection.execute(
+        """
+        WITH
+        plant_counts AS (
+            SELECT user_id, COUNT(*) AS plant_count FROM plants GROUP BY user_id
+        ),
+        checkin_counts AS (
+            SELECT p.user_id, COUNT(*) AS checkin_count
+            FROM checkins c
+            JOIN plants p ON p.id = c.plant_id
+            GROUP BY p.user_id
+        ),
+        watering_counts AS (
+            SELECT p.user_id, COUNT(*) AS watering_count
+            FROM waterings w
+            JOIN plants p ON p.id = w.plant_id
+            GROUP BY p.user_id
+        ),
+        followup_counts AS (
+            SELECT user_id, COUNT(*) AS followup_count
+            FROM chat_messages
+            WHERE role = 'user'
+            GROUP BY user_id
+        ),
+        ai_counts AS (
+            SELECT user_id, COALESCE(SUM(count), 0) AS ai_call_count
+            FROM ai_usage
+            GROUP BY user_id
+        ),
+        activity AS (
+            SELECT id AS user_id, updated_at AS activity_at FROM users
+            UNION ALL SELECT user_id, updated_at FROM plants
+            UNION ALL SELECT p.user_id, c.created_at FROM checkins c JOIN plants p ON p.id = c.plant_id
+            UNION ALL SELECT p.user_id, w.created_at FROM waterings w JOIN plants p ON p.id = w.plant_id
+            UNION ALL SELECT user_id, created_at FROM chat_messages
+            UNION ALL SELECT user_id, updated_at FROM ai_usage
+            UNION ALL SELECT user_id, last_seen_at FROM user_sessions
+        ),
+        last_activity AS (
+            SELECT user_id, MAX(activity_at) AS last_active_at
+            FROM activity
+            GROUP BY user_id
+        )
+        SELECT
+            u.id,
+            u.name,
+            u.email,
+            u.created_at,
+            COALESCE(pc.plant_count, 0) AS plant_count,
+            COALESCE(cc.checkin_count, 0) AS checkin_count,
+            COALESCE(wc.watering_count, 0) AS watering_count,
+            COALESCE(fc.followup_count, 0) AS followup_count,
+            COALESCE(ac.ai_call_count, 0) AS ai_call_count,
+            la.last_active_at
+        FROM users u
+        LEFT JOIN plant_counts pc ON pc.user_id = u.id
+        LEFT JOIN checkin_counts cc ON cc.user_id = u.id
+        LEFT JOIN watering_counts wc ON wc.user_id = u.id
+        LEFT JOIN followup_counts fc ON fc.user_id = u.id
+        LEFT JOIN ai_counts ac ON ac.user_id = u.id
+        LEFT JOIN last_activity la ON la.user_id = u.id
+        WHERE u.is_claimable = 0
+        ORDER BY datetime(COALESCE(la.last_active_at, u.updated_at, u.created_at)) DESC, u.name ASC
+        LIMIT 50
+        """
+    ).fetchall()
+
+    return {
+        "generated_at": now_iso(),
+        "totals": {
+            "gardens": _scalar_int(connection, "SELECT COUNT(*) FROM users WHERE is_claimable = 0"),
+            "plants": _scalar_int(connection, "SELECT COUNT(*) FROM plants"),
+            "checkins": _scalar_int(connection, "SELECT COUNT(*) FROM checkins"),
+            "waterings": _scalar_int(connection, "SELECT COUNT(*) FROM waterings"),
+            "followups": _scalar_int(connection, "SELECT COUNT(*) FROM chat_messages WHERE role = 'user'"),
+            "ai_calls": _scalar_int(connection, "SELECT COALESCE(SUM(count), 0) FROM ai_usage"),
+        },
+        "last_7_days": {
+            "active_gardens": active_gardens_7d,
+            "new_gardens": _scalar_int(
+                connection,
+                "SELECT COUNT(*) FROM users WHERE is_claimable = 0 AND datetime(created_at) >= datetime(?)",
+                (last_7_cutoff,),
+            ),
+            "plants": _scalar_int(
+                connection,
+                "SELECT COUNT(*) FROM plants WHERE datetime(created_at) >= datetime(?)",
+                (last_7_cutoff,),
+            ),
+            "checkins": _scalar_int(
+                connection,
+                "SELECT COUNT(*) FROM checkins WHERE datetime(created_at) >= datetime(?)",
+                (last_7_cutoff,),
+            ),
+            "waterings": _scalar_int(
+                connection,
+                "SELECT COUNT(*) FROM waterings WHERE datetime(created_at) >= datetime(?)",
+                (last_7_cutoff,),
+            ),
+            "followups": _scalar_int(
+                connection,
+                "SELECT COUNT(*) FROM chat_messages WHERE role = 'user' AND datetime(created_at) >= datetime(?)",
+                (last_7_cutoff,),
+            ),
+        },
+        "daily": daily,
+        "gardens": [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "email": row["email"],
+                "created_at": row["created_at"],
+                "last_active_at": row["last_active_at"] or row["created_at"],
+                "plant_count": int(row["plant_count"] or 0),
+                "checkin_count": int(row["checkin_count"] or 0),
+                "watering_count": int(row["watering_count"] or 0),
+                "followup_count": int(row["followup_count"] or 0),
+                "ai_call_count": int(row["ai_call_count"] or 0),
+            }
+            for row in garden_rows
+        ],
+    }
 
 
 def serialize_checkin(row: sqlite3.Row) -> dict[str, object]:

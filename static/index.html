@@ -53,6 +53,7 @@
       </nav>
 
       <section id="garden-view" class="app-view" hidden></section>
+      <section id="admin-view" class="app-view" hidden></section>
 
       <section id="add-view" class="app-view">
         <div class="panel form-panel">
@@ -133,7 +134,10 @@
           <h3 id="session-user-name">My Garden</h3>
           <p id="session-user-email" class="section-note"></p>
         </div>
-        <button id="switch-profile" class="ghost-button" type="button">Switch</button>
+        <div class="session-actions">
+          <a id="admin-link" class="ghost-button link-button" href="#/admin" hidden>Stats</a>
+          <button id="switch-profile" class="ghost-button" type="button">Switch</button>
+        </div>
       </section>
     </main>
 

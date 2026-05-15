@@ -3,12 +3,15 @@ import { defaultSuggestion, isUnknownSuggestionName } from "/static/js/helpers.j
 export function createInitialState() {
   return {
     currentUser: null,
+    isAdmin: false,
     rememberedUser: null,
     language: "en",
     sessionClaimable: false,
     authSubmitting: false,
     authNeedsName: false,
     plants: [],
+    adminMetrics: null,
+    adminLoading: false,
     selectedPlant: null,
     route: { name: "add" },
     intakePreviewUrl: null,
@@ -76,6 +79,9 @@ export function resetChatState(state) {
 
 export function resetSessionState(state) {
   state.currentUser = null;
+  state.isAdmin = false;
+  state.adminMetrics = null;
+  state.adminLoading = false;
   state.authNeedsName = false;
   state.authSubmitting = false;
   resetChatState(state);

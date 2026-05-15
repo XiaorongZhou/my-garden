@@ -78,6 +78,14 @@ export async function fetchPlants() {
   return data.plants || [];
 }
 
+export async function fetchAdminMetrics() {
+  const response = await fetchWithTimeout("/api/admin/metrics", {
+    headers: authHeaders(),
+  });
+  const data = await parseJson(response, "Could not load admin dashboard.");
+  return data.metrics || null;
+}
+
 export async function fetchPlantDetail(plantId) {
   const response = await fetchWithTimeout(`/api/plants/${encodeURIComponent(plantId)}`, {
     headers: authHeaders(),

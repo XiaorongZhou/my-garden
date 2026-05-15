@@ -8,8 +8,9 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .config import SESSION_TTL_DAYS, STATIC_DIR, UPLOAD_DIR
+from .config import ADMIN_EMAILS, SESSION_TTL_DAYS, STATIC_DIR, UPLOAD_DIR
 from .data import (
+    admin_metrics,
     create_user_session,
     create_or_claim_user,
     create_chat_message,
@@ -21,6 +22,7 @@ from .data import (
     fetch_chat_thread_for_plant,
     fetch_or_create_chat_thread,
     fetch_plant_row,
+    first_registered_user_id,
     fetch_user_by_session_token,
     fetch_watering_row,
     get_conn,
@@ -88,6 +90,15 @@ def session_cookie_header(session_token: str) -> str:
         f"{SESSION_COOKIE_NAME}={session_token}; Path=/; Max-Age={max_age}; "
         "SameSite=Lax; HttpOnly"
     )
+
+
+def is_admin_user(connection, user_row) -> bool:
+    if user_row is None:
+        return False
+    normalized_email = str(user_row["normalized_email"] or user_row["email"] or "").strip().lower()
+    if ADMIN_EMAILS:
+        return normalized_email in ADMIN_EMAILS
+    return str(user_row["id"]) == first_registered_user_id(connection)
 
 
 class MyGardenHandler(BaseHTTPRequestHandler):
@@ -179,6 +190,7 @@ class MyGardenHandler(BaseHTTPRequestHandler):
     ):
         return {
             "user": serialize_user(user_row) if user_row is not None else None,
+            "is_admin": is_admin_user(connection, user_row) if user_row is not None else False,
             "session_token": session_token,
             "claimable_legacy_garden": has_claimable_user(connection),
             "claimed_legacy_garden": claimed_legacy_garden,
@@ -215,6 +227,13 @@ class MyGardenHandler(BaseHTTPRequestHandler):
                 with get_conn() as connection:
                     user = self._resolve_current_user(connection, required=False)
                     return self._send_json(self._session_payload(connection, user))
+
+            if path == "/api/admin/metrics":
+                with get_conn() as connection:
+                    user = self._resolve_current_user(connection)
+                    if not is_admin_user(connection, user):
+                        raise ApiError(HTTPStatus.FORBIDDEN, "Admin access required.")
+                    return self._send_json({"metrics": admin_metrics(connection)})
 
             if path == "/api/plants":
                 with get_conn() as connection:

@@ -16,6 +16,7 @@ import {
   createPlantRequest,
   deleteCheckinRequest,
   deletePlantRequest,
+  fetchAdminMetrics,
   fetchPlantDetail,
   fetchPlantChat,
   fetchPlants,
@@ -38,6 +39,7 @@ import { routeFromHash, setRoute } from "/static/js/router.js";
 import { renderAddView } from "/static/js/views/add-view.js";
 import { renderGarden } from "/static/js/views/garden-view.js";
 import { renderChatView } from "/static/js/views/chat-view.js";
+import { renderAdminDashboard } from "/static/js/views/admin-view.js";
 import {
   renderCheckinView,
   renderDetail,
@@ -62,8 +64,10 @@ const elements = {
   sessionBarEl: document.getElementById("session-bar"),
   sessionUserNameEl: document.getElementById("session-user-name"),
   sessionUserEmailEl: document.getElementById("session-user-email"),
+  adminLink: document.getElementById("admin-link"),
   switchProfileButton: document.getElementById("switch-profile"),
   gardenViewEl: document.getElementById("garden-view"),
+  adminViewEl: document.getElementById("admin-view"),
   addViewEl: document.getElementById("add-view"),
   detailViewEl: document.getElementById("detail-view"),
   chatViewEl: document.getElementById("chat-view"),
@@ -129,6 +133,7 @@ const COPY = {
     session: {
       eyebrow: "Garden",
       switch: "Switch",
+      stats: "Stats",
       gardenSuffix: "garden",
     },
     add: {
@@ -202,6 +207,7 @@ const COPY = {
     session: {
       eyebrow: "花园",
       switch: "切换",
+      stats: "数据",
       gardenSuffix: "的花园",
     },
     add: {
@@ -361,6 +367,16 @@ function clearCurrentUser() {
   resetDetailEditorState(state);
 }
 
+async function loadAdminMetrics() {
+  state.adminLoading = true;
+  renderCurrentView();
+  try {
+    state.adminMetrics = await fetchAdminMetrics();
+  } finally {
+    state.adminLoading = false;
+  }
+}
+
 function resetPurchaseDateInput() {
   if (elements.intakePurchaseDateInput) {
     elements.intakePurchaseDateInput.value = todayInputValue();
@@ -438,7 +454,7 @@ function setActiveTab() {
       button.textContent = t().tabs.garden;
     }
   });
-  const activeRoute = state.route.name === "detail" || state.route.name === "checkin" || state.route.name === "chat"
+  const activeRoute = state.route.name === "detail" || state.route.name === "checkin" || state.route.name === "chat" || state.route.name === "admin"
     ? "garden"
     : state.route.name;
   elements.tabButtons.forEach((button) => {
@@ -469,6 +485,7 @@ function renderAddStaticCopy() {
 function showView(name) {
   elements.authViewEl.hidden = name !== "auth";
   elements.gardenViewEl.hidden = name !== "garden";
+  elements.adminViewEl.hidden = name !== "admin";
   elements.addViewEl.hidden = name !== "add";
   elements.detailViewEl.hidden = name !== "detail";
   elements.chatViewEl.hidden = name !== "chat";
@@ -489,6 +506,10 @@ function renderSessionBar() {
     ? `${activeUser.name}${copy.gardenSuffix}`
     : `${activeUser.name}'s ${copy.gardenSuffix}`;
   elements.sessionUserEmailEl.textContent = activeUser.email || "";
+  if (elements.adminLink) {
+    elements.adminLink.hidden = !state.isAdmin;
+    elements.adminLink.textContent = copy.stats;
+  }
   elements.switchProfileButton.textContent = copy.switch;
   elements.switchProfileButton.dataset.mode = "switch";
 }
@@ -580,15 +601,34 @@ async function loadPlantChat(plantId, checkinId = "") {
   state.chatSuggestedPrompts = data.suggested_prompts || [];
 }
 
+function handleBackToGarden() {
+  setRoute("/garden", syncRoute);
+}
+
+async function handleRefreshAdmin() {
+  if (!state.isAdmin || state.adminLoading) {
+    return;
+  }
+  try {
+    await loadAdminMetrics();
+  } catch (error) {
+    showToast(error.message || "Could not refresh stats");
+  } finally {
+    renderCurrentView();
+  }
+}
+
 async function refreshSessionState() {
   const payload = await fetchSession();
   state.sessionClaimable = Boolean(payload.claimable_legacy_garden);
+  state.isAdmin = Boolean(payload.is_admin);
   if (payload.user) {
     state.authNeedsName = false;
     setCurrentUser(payload.user);
     return payload.user;
   }
   setCurrentUser(null);
+  state.isAdmin = false;
   return null;
 }
 
@@ -926,6 +966,17 @@ function renderCurrentView() {
     return;
   }
 
+  if (state.route.name === "admin") {
+    showView("admin");
+    renderAdminDashboard({
+      state,
+      adminViewEl: elements.adminViewEl,
+      onRefreshAdmin: handleRefreshAdmin,
+      onBackToGarden: handleBackToGarden,
+    });
+    return;
+  }
+
   if (state.route.name === "chat") {
     showView("chat");
     renderChatView({
@@ -985,7 +1036,20 @@ async function syncRoute() {
   }
   await loadPlants();
 
-  if (route.name === "detail" || route.name === "checkin") {
+  if (route.name === "admin") {
+    resetChatState(state);
+    state.selectedPlant = null;
+    if (!state.isAdmin) {
+      showToast("Admin access required");
+      setRoute("/garden", syncRoute);
+      return;
+    }
+    try {
+      await loadAdminMetrics();
+    } catch (error) {
+      showToast(error.message || "Could not load stats");
+    }
+  } else if (route.name === "detail" || route.name === "checkin") {
     resetChatState(state);
     const exists = state.plants.some((plant) => plant.id === route.plantId);
     if (!exists) {
@@ -1206,6 +1270,7 @@ async function handleAuthSubmit(event) {
       password,
     });
     setCurrentUser(payload.user || null, payload.session_token || "");
+    state.isAdmin = Boolean(payload.is_admin);
     state.sessionClaimable = Boolean(payload.claimable_legacy_garden);
     state.authNeedsName = false;
     await loadPlants();
